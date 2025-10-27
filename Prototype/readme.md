@@ -21,7 +21,7 @@ kubectl get nodes
 
 Thêm kho chứa chart pfisterer-hadoop:
 
-helm repo add pfisterer-hadoop \[https://pfisterer.github.io/apache-hadoop-helm/\](https://pfisterer.github.io/apache-hadoop-helm/)  
+helm repo add pfisterer-hadoop https://pfisterer.github.io/apache-hadoop-helm/\](https://pfisterer.github.io/apache-hadoop-helm  
 helm repo update
 
 ### **3\. Cài đặt HDFS (với 1 DataNode)**
