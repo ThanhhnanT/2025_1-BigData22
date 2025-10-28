@@ -1,0 +1,14 @@
+.env
+.env
+g-research-crypto-forecasting/
+airflow/logs/
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.pid
+
+# Other runtime or state directories
+__pycache__/
+*.pyc
+
+airflow/airflow.db
