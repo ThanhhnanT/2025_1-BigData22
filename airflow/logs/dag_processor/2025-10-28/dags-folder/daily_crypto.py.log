@@ -1,0 +1,7 @@
+{"timestamp":"2025-10-28T01:00:34.609053","level":"info","event":"Filling up the DagBag from /home/vvt/D/SubjectResource/IT4931_BigData_Processing_and_Storage/CRYPTO/airflow/dags/daily_crypto.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2025-10-28T01:01:04.951590","level":"info","event":"Filling up the DagBag from /home/vvt/D/SubjectResource/IT4931_BigData_Processing_and_Storage/CRYPTO/airflow/dags/daily_crypto.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2025-10-28T01:01:35.302992","level":"info","event":"Filling up the DagBag from /home/vvt/D/SubjectResource/IT4931_BigData_Processing_and_Storage/CRYPTO/airflow/dags/daily_crypto.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2025-10-28T01:02:05.671669","level":"info","event":"Filling up the DagBag from /home/vvt/D/SubjectResource/IT4931_BigData_Processing_and_Storage/CRYPTO/airflow/dags/daily_crypto.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2025-10-28T01:02:24.960366","level":"info","event":"Filling up the DagBag from /home/vvt/D/SubjectResource/IT4931_BigData_Processing_and_Storage/CRYPTO/airflow/dags/daily_crypto.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2025-10-28T02:09:32.180555","level":"info","event":"Filling up the DagBag from /home/vvt/D/SubjectResource/IT4931_BigData_Processing_and_Storage/CRYPTO/airflow/dags/daily_crypto.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2025-10-28T02:09:32.187774Z","level":"warning","event":"Process exited abnormally","exit_code":126,"logger":"processor"}
