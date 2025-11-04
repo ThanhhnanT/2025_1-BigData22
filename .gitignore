@@ -11,4 +11,9 @@ airflow/logs/
 __pycache__/
 *.pyc
 
+airflow/dags/__pycache__/
+**/*.json
+
 airflow/airflow.db
+.idea/
+
