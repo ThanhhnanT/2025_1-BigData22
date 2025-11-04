@@ -9,7 +9,7 @@ import os
 load_dotenv()
 
 app = Application(
-    broker_address="localhost:9092",
+    broker_address="192.168.49.2:30113",
     consumer_group="coin_group",
 )
 
