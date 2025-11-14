@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: binance-consumer
+  namespace: kafka
+  labels:
+    app: binance-consumer
+spec:
+  replicas: 3  # Có thể scale lên nhiều consumer (tối đa = số partition)
+  selector:
+    matchLabels:
+      app: binance-consumer
+  template:
+    metadata:
+      labels:
+        app: binance-consumer
+    spec:
+      containers:
+      - name: consumer
+        image: binance-consumer:latest  # Thay bằng image của bạn
+        imagePullPolicy: IfNotPresent
+        command: ["python", "binance_consumer.py"]
+        envFrom:
+        - configMapRef:
+            name: crypto-kafka-config
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        # Health check
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep '[p]ython binance_consumer.py' || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep '[p]ython binance_consumer.py' || exit 1"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+

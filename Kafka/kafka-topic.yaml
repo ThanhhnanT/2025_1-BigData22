@@ -1,0 +1,18 @@
+# Kafka Topic configuration cho Strimzi Operator
+# Sử dụng file này nếu bạn muốn tạo topic qua Kubernetes
+# kubectl apply -f kafka-topic.yaml -n kafka
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: crypto-kline-1m
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  partitions: 5        # Số partition (có thể chạy 5 consumer song song)
+  replicas: 3          # Số replica (nên <= số broker)
+  config:
+    retention.ms: 604800000    # Giữ dữ liệu 7 ngày (7 * 24 * 60 * 60 * 1000)
+    segment.ms: 86400000       # Tạo segment mới mỗi ngày
+    compression.type: "snappy"  # Nén dữ liệu để tiết kiệm dung lượng
+
+
