@@ -1,0 +1,74 @@
+# Values để generate Kafka Cluster CRD
+# Sử dụng với script hoặc Helm template
+
+clusterName: "my-cluster"
+namespace: "kafka"
+
+# Kafka configuration
+kafka:
+  replicas: 3
+  version: "3.7.0"
+  
+  # Listeners
+  listeners:
+    - name: plain
+      port: 9092
+      type: internal
+      tls: false
+    - name: tls
+      port: 9093
+      type: internal
+      tls: true
+    - name: external
+      port: 9094
+      type: nodeport
+      tls: false
+  
+  # Config
+  config:
+    offsets.topic.replication.factor: 3
+    transaction.state.log.replication.factor: 3
+    transaction.state.log.min.isr: 2
+    default.replication.factor: 3
+    min.insync.replicas: 2
+    log.retention.hours: 168  # 7 days
+    log.segment.bytes: 1073741824  # 1GB
+  
+  # Storage
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        deleteClaim: false
+        storageClass: "standard"
+
+# Node Pool (KRaft mode)
+nodePool:
+  enabled: true
+  name: "dual-role"
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        deleteClaim: false
+        storageClass: "standard"
+    kraftMetadata: shared
+
+# Entity Operator
+entityOperator:
+  enabled: true
+  topicOperator: {}
+  userOperator: {}
+
+# Zookeeper (not needed for KRaft mode)
+zookeeper:
+  enabled: false
+

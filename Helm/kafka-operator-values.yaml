@@ -1,0 +1,56 @@
+# Helm values cho Strimzi Kafka Operator
+# Chart: strimzi/strimzi-kafka-operator
+# Repo: https://strimzi.io/charts/
+
+# Watch namespaces (empty = watch all namespaces)
+watchNamespaces: []
+
+# Watch any namespace (if watchNamespaces is empty)
+watchAnyNamespace: true
+
+# Resource limits
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 512Mi
+
+# Replicas
+replicas: 1
+
+# Image
+image:
+  repository: quay.io/strimzi/kafka
+  tag: 0.40.0-kafka-3.7.0
+  pullPolicy: IfNotPresent
+
+# Service account
+serviceAccount:
+  create: true
+  name: strimzi-cluster-operator
+
+# RBAC
+rbac:
+  create: true
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+
+# Pod security context
+podSecurityContext:
+  fsGroup: 65534
+
+# Node selector (optional)
+# nodeSelector: {}
+
+# Tolerations (optional)
+# tolerations: []
+
+# Affinity (optional)
+# affinity: {}
+

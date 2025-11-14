@@ -1,0 +1,151 @@
+# Helm values cho Apache Airflow
+# Chart: apache-airflow/airflow
+# Repo: https://airflow.apache.org/docs/helm-chart/stable/index.html
+
+# Airflow version
+airflowVersion: "2.8.0"
+
+# Default Airflow image
+defaultAirflowRepository: apache/airflow
+defaultAirflowTag: "2.8.0"
+
+# Executor: LocalExecutor, CeleryExecutor, KubernetesExecutor
+executor: "CeleryExecutor"
+
+# DAGs configuration
+dags:
+  gitSync:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClassName: "standard"
+  path: /opt/airflow/dags
+
+# Logs persistence
+logs:
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: "standard"
+
+# Postgres database (internal)
+postgresql:
+  enabled: true
+  auth:
+    username: airflow
+    password: airflow
+    database: airflow
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClassName: "standard"
+
+# Redis (for CeleryExecutor)
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClassName: "standard"
+
+# Webserver
+webserver:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  service:
+    type: NodePort
+    nodePort: 30809
+
+# Scheduler
+scheduler:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# Workers (for CeleryExecutor)
+workers:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# Flower (for monitoring Celery)
+flower:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  service:
+    type: NodePort
+    nodePort: 30810
+
+# Environment variables
+env:
+  - name: AIRFLOW__CORE__EXECUTOR
+    value: "CeleryExecutor"
+  - name: AIRFLOW__CORE__FERNET_KEY
+    value: ""  # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
+    value: "true"
+  - name: AIRFLOW__CORE__LOAD_EXAMPLES
+    value: "false"
+  - name: AIRFLOW__API__AUTH_BACKEND
+    value: "airflow.api.auth.backend.basic_auth"
+  - name: AIRFLOW__WEBSERVER__EXPOSE_CONFIG
+    value: "true"
+
+# Extra volumes for DAGs (if using ConfigMap or PVC)
+# volumes:
+#   - name: dags
+#     configMap:
+#       name: airflow-dags
+
+# Extra volume mounts
+# volumeMounts:
+#   - name: dags
+#     mountPath: /opt/airflow/dags
+
+# Service account for Spark jobs
+serviceAccount:
+  create: true
+  name: airflow-spark
+
+# Ingress (optional)
+ingress:
+  enabled: false
+  # web:
+  #   annotations:
+  #     kubernetes.io/ingress.class: nginx
+  #   hosts:
+  #     - host: airflow.example.com
+  #       paths:
+  #         - "/"
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+

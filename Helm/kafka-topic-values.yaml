@@ -1,0 +1,19 @@
+# Values cho Kafka Topics
+
+topics:
+  - name: crypto-kline-1m
+    partitions: 5
+    replicas: 3
+    config:
+      retention.ms: 604800000  # 7 days
+      segment.ms: 86400000     # 1 day
+      compression.type: "snappy"
+      cleanup.policy: "delete"
+  
+  # Có thể thêm topics khác
+  # - name: crypto-trades
+  #   partitions: 10
+  #   replicas: 3
+  #   config:
+  #     retention.ms: 259200000  # 3 days
+

@@ -1,0 +1,44 @@
+# Helm values cho Spark Operator
+# Chart: spark-operator/spark-operator
+# Repo: https://googlecloudplatform.github.io/spark-on-k8s-operator
+
+# Operator configuration
+operatorImageName: gcr.io/spark-operator/spark-operator
+operatorImageTag: v1beta2-1.3.8-3.1.1
+imagePullPolicy: IfNotPresent
+
+# Service account
+serviceAccount:
+  create: true
+  name: spark-operator
+
+# RBAC
+rbac:
+  create: true
+
+# Webhook (optional, for validation)
+webhook:
+  enable: true
+
+# Metrics (optional)
+metrics:
+  enable: false
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selector (optional)
+# nodeSelector: {}
+
+# Tolerations (optional)
+# tolerations: []
+
+# Affinity (optional)
+# affinity: {}
+

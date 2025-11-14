@@ -1,0 +1,19 @@
+# Kafka Topics CRD
+# Generated from kafka-topic-values.yaml
+
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: crypto-kline-1m
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  partitions: 5
+  replicas: 3
+  config:
+    retention.ms: 604800000    # 7 days
+    segment.ms: 86400000       # 1 day
+    compression.type: "snappy"
+    cleanup.policy: "delete"
+

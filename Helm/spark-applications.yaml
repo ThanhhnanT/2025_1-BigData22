@@ -1,0 +1,123 @@
+# Spark Applications để deploy lên K8s
+# Sử dụng Spark Operator CRD
+
+---
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: crypto-redis-writer
+  namespace: spark
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: "spark:3.5.0"
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: "local:///opt/spark/apps/spark_redis_writer.py"
+  
+  sparkVersion: "3.5.0"
+  
+  # Driver configuration
+  driver:
+    cores: 1
+    coreLimit: "1200m"
+    memory: "1g"
+    labels:
+      version: "3.5.0"
+    serviceAccount: spark-operator
+  
+  # Executor configuration
+  executor:
+    cores: 2
+    instances: 2
+    memory: "2g"
+    labels:
+      version: "3.5.0"
+  
+  # Dependencies
+  deps:
+    jars:
+      - "https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.0/spark-sql-kafka-0-10_2.12-3.5.0.jar"
+    pythonFiles:
+      - "local:///opt/spark/apps/requirements.txt"
+  
+  # Environment variables
+  env:
+    - name: KAFKA_BROKER
+      value: "my-cluster-kafka-bootstrap:9092"
+    - name: KAFKA_TOPIC
+      value: "crypto_kline_1m"
+    - name: REDIS_HOST
+      value: "redis-service"
+    - name: REDIS_PORT
+      value: "6379"
+    - name: CHECKPOINT_LOCATION
+      value: "/tmp/spark_redis_checkpoint"
+  
+  # Restart policy
+  restartPolicy:
+    type: Always
+    onFailureRetries: 3
+    onFailureRetryInterval: 10
+    onSubmissionFailureRetries: 5
+    onSubmissionFailureRetryInterval: 20
+
+---
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: crypto-ohlc-5m-aggregator
+  namespace: spark
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: "spark:3.5.0"
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: "local:///opt/spark/apps/spark_ohlc_5m_aggregator.py"
+  
+  sparkVersion: "3.5.0"
+  
+  driver:
+    cores: 1
+    coreLimit: "1200m"
+    memory: "1g"
+    labels:
+      version: "3.5.0"
+    serviceAccount: spark-operator
+  
+  executor:
+    cores: 2
+    instances: 2
+    memory: "2g"
+    labels:
+      version: "3.5.0"
+  
+  deps:
+    jars:
+      - "https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.0/spark-sql-kafka-0-10_2.12-3.5.0.jar"
+      - "https://repo1.maven.org/maven2/org/mongodb/spark/mongo-spark-connector_2.12/3.0.1/mongo-spark-connector_2.12-3.0.1.jar"
+  
+  env:
+    - name: KAFKA_BROKER
+      value: "my-cluster-kafka-bootstrap:9092"
+    - name: KAFKA_TOPIC
+      value: "crypto_kline_1m"
+    - name: REDIS_HOST
+      value: "redis-service"
+    - name: REDIS_PORT
+      value: "6379"
+    - name: MONGO_URI
+      value: "mongodb://mongo-service:27017"
+    - name: MONGO_DB
+      value: "crypto_history"
+    - name: MONGO_COLLECTION
+      value: "candles"
+    - name: CHECKPOINT_LOCATION
+      value: "/tmp/spark_ohlc_5m_checkpoint"
+  
+  restartPolicy:
+    type: Always
+    onFailureRetries: 3
+    onFailureRetryInterval: 10
+

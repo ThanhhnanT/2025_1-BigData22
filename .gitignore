@@ -17,3 +17,8 @@ airflow/dags/__pycache__/
 airflow/airflow.db
 .idea/
 
+crypto-dashboard/node_modules/
+crypto-dashboard/.next
+frontend/
+backend/
+

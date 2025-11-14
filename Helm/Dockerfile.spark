@@ -1,0 +1,29 @@
+# Dockerfile cho Spark với code crypto
+FROM apache/spark:3.5.0
+
+# Set working directory
+WORKDIR /opt/spark
+
+# Install Python dependencies
+USER root
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+RUN pip3 install --no-cache-dir \
+    redis==5.0.1 \
+    pymongo==4.6.1
+
+# Copy Spark jobs
+COPY Spark/ /opt/spark/apps/
+
+# Set permissions
+RUN chown -R spark:spark /opt/spark/apps
+
+# Switch back to spark user
+USER spark
+
+# Default command
+CMD ["/opt/spark/bin/spark-submit", "--help"]
+
