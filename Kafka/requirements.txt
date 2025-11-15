@@ -1,6 +1,0 @@
-kafka-python==2.0.2
-websocket-client==1.6.4
-redis==5.0.1
-pymongo==4.6.1
-
-

@@ -1,17 +1,18 @@
 """
 Kafka Consumer để lưu dữ liệu vào Redis
-- Lọc kline khi x=true (đã đóng)
+- Đọc kline từ Kafka topic
 - Lưu vào Redis với TTL
-- Cũng lưu kline chưa đóng (x=false) với TTL ngắn hơn
+- Tạo index để query theo time range
+- Lưu latest kline cho mỗi symbol
 """
 import json
 import os
 from kafka import KafkaConsumer
 import redis
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Config
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "192.168.49.2:30113")
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "192.168.49.2:30599")
 TOPIC = os.getenv("KAFKA_TOPIC", "crypto_kline_1m")
 CONSUMER_GROUP = os.getenv("CONSUMER_GROUP", "redis_writer_group")
 
@@ -45,6 +46,7 @@ def save_to_redis(kline_data):
     """
     symbol = kline_data.get("s", "UNKNOWN")
     open_time = kline_data.get("t")  # Open time in milliseconds
+    close_time = kline_data.get("T")  # Close time in milliseconds
     is_closed = kline_data.get("x", False)
     
     # Tạo key
@@ -53,18 +55,18 @@ def save_to_redis(kline_data):
     # Tạo value (JSON)
     value = {
         "symbol": symbol,
-        "interval": "1m",
-        "open_time": open_time,
-        "close_time": kline_data.get("T"),
+        "interval": kline_data.get("i", "1m"),
+        "openTime": open_time,
+        "closeTime": close_time,
         "open": float(kline_data.get("o", 0)),
         "high": float(kline_data.get("h", 0)),
         "low": float(kline_data.get("l", 0)),
         "close": float(kline_data.get("c", 0)),
         "volume": float(kline_data.get("v", 0)),
-        "quote_volume": float(kline_data.get("q", 0)),
+        "quoteVolume": float(kline_data.get("q", 0)),
         "trades": int(kline_data.get("n", 0)),
-        "is_closed": is_closed,
-        "updated_at": datetime.now().isoformat()
+        "x": is_closed,  # True nếu kline đã đóng
+        "updatedAt": datetime.now().isoformat()
     }
     
     # TTL: 24h cho kline đã đóng, 5 phút cho kline chưa đóng
@@ -77,8 +79,7 @@ def save_to_redis(kline_data):
         json.dumps(value)
     )
     
-    # Lưu vào sorted set để query theo time range
-    # Key: crypto:{symbol}:1m:index
+    # Lưu vào sorted set để query theo time range (dùng cho Airflow DAG)
     index_key = f"crypto:{symbol}:1m:index"
     redis_client.zadd(index_key, {str(open_time): open_time})
     redis_client.expire(index_key, 86400 * 7)  # 7 ngày
@@ -89,21 +90,6 @@ def save_to_redis(kline_data):
     
     return key, is_closed
 
-def get_recent_klines(symbol, count=5):
-    """Lấy kline gần nhất từ Redis"""
-    index_key = f"crypto:{symbol}:1m:index"
-    # Lấy top N timestamps
-    timestamps = redis_client.zrevrange(index_key, 0, count - 1)
-    
-    klines = []
-    for ts in timestamps:
-        key = f"crypto:{symbol}:1m:{ts}"
-        data = redis_client.get(key)
-        if data:
-            klines.append(json.loads(data))
-    
-    return klines
-
 print("=" * 80)
 print("Redis Consumer đã khởi động")
 print(f"Kafka Broker: {KAFKA_BROKER}")
@@ -111,7 +97,7 @@ print(f"Topic: {TOPIC}")
 print(f"Consumer Group: {CONSUMER_GROUP}")
 print(f"Redis: {REDIS_HOST}:{REDIS_PORT}")
 print("=" * 80)
-print("Đang lắng nghe messages từ Kafka...")
+print("Đang lắng nghe messages từ Kafka và lưu vào Redis...")
 print("=" * 80)
 
 try:
@@ -122,22 +108,42 @@ try:
         key, is_closed = save_to_redis(kline)
         
         symbol = kline.get("s", "UNKNOWN")
+        interval = kline.get("i", "")
+        open_price = float(kline.get("o", 0))
+        close_price = float(kline.get("c", 0))
+        high_price = float(kline.get("h", 0))
+        low_price = float(kline.get("l", 0))
+        volume = float(kline.get("v", 0))
+        
+        # Tính % thay đổi giá
+        price_change = ((close_price - open_price) / open_price * 100) if open_price > 0 else 0
+        change_symbol = "📈" if price_change >= 0 else "📉"
+        
+        # Format timestamp
+        open_time = datetime.fromtimestamp(int(kline.get("t", 0)) / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        
         status = "✅ CLOSED" if is_closed else "⏳ OPEN"
         
-        print(f"\n[{status}] {symbol} | Key: {key}")
-        print(f"  OHLC: O={kline.get('o')} H={kline.get('h')} L={kline.get('l')} C={kline.get('c')}")
-        print(f"  Volume: {kline.get('v')} | Trades: {kline.get('n')}")
+        print(f"\n[{open_time}] {symbol} ({interval}) | {status}")
+        print(f"  Redis Key: {key}")
+        print(f"  OHLC: O=${open_price:.4f} H=${high_price:.4f} L=${low_price:.4f} C=${close_price:.4f} {change_symbol} {price_change:+.2f}%")
+        print(f"  Volume: {volume:.2f} | Trades: {kline.get('n', 0)}")
+        print(f"  Partition: {msg.partition}, Offset: {msg.offset}")
         
         # Nếu kline đã đóng, có thể trigger OHLC aggregation
         if is_closed:
-            print(f"  → Kline đã đóng, có thể tính OHLC 5m")
+            print(f"  → Kline đã đóng, sẵn sàng cho OHLC 5m aggregation")
+        
+        print("-" * 80)
             
 except KeyboardInterrupt:
     print("\n\nĐang dừng consumer...")
 except Exception as e:
     print(f"\n❌ Lỗi: {e}")
+    import traceback
+    traceback.print_exc()
 finally:
     consumer.close()
     redis_client.close()
-    print("Đã đóng kết nối.")
+    print("✅ Đã đóng kết nối Kafka và Redis.")
 
