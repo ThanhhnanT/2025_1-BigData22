@@ -1,18 +1,14 @@
-"""
-Script để tạo Kafka topic với nhiều partition
-Chạy script này trước khi chạy producer để đảm bảo topic có đủ partition
-"""
+
 from kafka import KafkaAdminClient
 from kafka.admin import NewTopic
 from kafka.errors import TopicAlreadyExistsError
 
 KAFKA_BROKER = "192.168.49.2:30113"
 TOPIC = "crypto_kline_1m"
-NUM_PARTITIONS = 5  # Số partition (nên >= số consumer muốn chạy song song)
-REPLICATION_FACTOR = 3  # Số replica (nên <= số broker)
+NUM_PARTITIONS = 5
+REPLICATION_FACTOR = 3
 
 def create_topic():
-    """Tạo topic với nhiều partition"""
     admin_client = KafkaAdminClient(
         bootstrap_servers=KAFKA_BROKER,
         client_id='topic_creator'
