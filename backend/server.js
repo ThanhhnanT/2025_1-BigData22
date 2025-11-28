@@ -18,8 +18,8 @@ async function main() {
   app.get("/api/candles", async (req, res) => {
     try {
       const symbol = req.query.symbol || "BTCUSDT";
-      const interval = req.query.interval || "30m";
-      const limit = parseInt(req.query.limit) || 500;
+      const interval = req.query.interval || "5m";
+      const limit = parseInt(req.query.limit) || 1000;
       const from = req.query.from ? parseInt(req.query.from) : null;
       const to = req.query.to ? parseInt(req.query.to) : null;
 
