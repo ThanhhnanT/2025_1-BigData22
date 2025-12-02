@@ -1,6 +1,5 @@
 import sys
 import os
-# sys.path.append(os.path.expanduser("~/D/anaconda3/envs/bigdata/lib/python3.10/site-packages"))
 from requests import Request, Session
 from requests.exceptions import ConnectionError, Timeout, TooManyRedirects
 import json

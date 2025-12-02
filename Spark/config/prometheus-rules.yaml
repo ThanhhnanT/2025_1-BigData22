@@ -1,0 +1,151 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: spark-alerts
+  namespace: crypto-infra
+  labels:
+    app: spark-operator
+    release: crypto-monitoring
+spec:
+  groups:
+  - name: spark-operator
+    interval: 30s
+    rules:
+    - alert: SparkOperatorDown
+      expr: up{job="spark-operator-metrics"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: spark-operator
+      annotations:
+        summary: "Spark Operator is down"
+        description: "Spark Operator in namespace {{ $labels.namespace }} has been down for more than 5 minutes."
+    
+    - alert: SparkOperatorNoReplicas
+      expr: kube_deployment_status_replicas_ready{deployment="crypto-spark-operator"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: spark-operator
+      annotations:
+        summary: "Spark Operator has no ready replicas"
+        description: "Spark Operator deployment has no ready replicas for more than 5 minutes."
+    
+    - alert: SparkOperatorFrequentRestarts
+      expr: rate(kube_pod_container_status_restarts_total{namespace="crypto-infra",pod=~"crypto-spark-operator-.*"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+        component: spark-operator
+      annotations:
+        summary: "Spark Operator pod is restarting frequently"
+        description: "Spark Operator pod {{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes."
+
+  - name: spark-applications
+    interval: 30s
+    rules:
+    - alert: SparkApplicationFailed
+      expr: spark_app_state{state="FAILED"} > 0
+      for: 1m
+      labels:
+        severity: warning
+        component: spark-application
+      annotations:
+        summary: "Spark Application failed"
+        description: "Spark Application {{ $labels.app_name }} in namespace {{ $labels.namespace }} has failed."
+    
+    - alert: SparkApplicationSubmissionFailed
+      expr: spark_app_state{state="SUBMISSION_FAILED"} > 0
+      for: 1m
+      labels:
+        severity: warning
+        component: spark-application
+      annotations:
+        summary: "Spark Application submission failed"
+        description: "Spark Application {{ $labels.app_name }} submission has failed."
+    
+    - alert: SparkApplicationRunningTooLong
+      expr: time() - spark_app_start_time{state="RUNNING"} > 86400
+      labels:
+        severity: info
+        component: spark-application
+      annotations:
+        summary: "Spark Application running for more than 24 hours"
+        description: "Spark Application {{ $labels.app_name }} has been running for more than 24 hours."
+    
+    - alert: SparkExecutorHighMemoryUsage
+      expr: spark_executor_memory_used / spark_executor_memory_total > 0.9
+      for: 10m
+      labels:
+        severity: warning
+        component: spark-executor
+      annotations:
+        summary: "Spark Executor high memory usage"
+        description: "Spark Executor {{ $labels.executor_id }} in application {{ $labels.app_name }} is using more than 90% memory."
+    
+    - alert: SparkDriverHighMemoryUsage
+      expr: spark_driver_memory_used / spark_driver_memory_total > 0.9
+      for: 5m
+      labels:
+        severity: critical
+        component: spark-driver
+      annotations:
+        summary: "Spark Driver high memory usage"
+        description: "Spark Driver in application {{ $labels.app_name }} is using more than 90% memory, OOM risk."
+
+  - name: spark-streaming
+    interval: 30s
+    rules:
+    - alert: SparkStreamingBatchDurationHigh
+      expr: spark_streaming_batch_duration > 60000
+      for: 10m
+      labels:
+        severity: warning
+        component: spark-streaming
+      annotations:
+        summary: "Spark Streaming batch duration is high"
+        description: "Spark Streaming application {{ $labels.app_name }} batch duration is {{ $value }}ms, which is high."
+    
+    - alert: SparkStreamingLagIncreasing
+      expr: rate(spark_streaming_total_delay[5m]) > 0
+      for: 15m
+      labels:
+        severity: warning
+        component: spark-streaming
+      annotations:
+        summary: "Spark Streaming lag is increasing"
+        description: "Spark Streaming application {{ $labels.app_name }} is falling behind."
+    
+    - alert: SparkStreamingNoBatchesCompleted
+      expr: rate(spark_streaming_batches_completed[5m]) == 0
+      for: 10m
+      labels:
+        severity: critical
+        component: spark-streaming
+      annotations:
+        summary: "Spark Streaming no batches completed"
+        description: "Spark Streaming application {{ $labels.app_name }} hasn't completed any batches in 10 minutes."
+
+  - name: spark-resources
+    interval: 30s
+    rules:
+    - alert: SparkExecutorsPending
+      expr: spark_app_executor_pending > 5
+      for: 10m
+      labels:
+        severity: warning
+        component: spark-resources
+      annotations:
+        summary: "Many Spark executors pending"
+        description: "Application {{ $labels.app_name }} has {{ $value }} executors pending for more than 10 minutes. Possible resource constraints."
+    
+    - alert: SparkNoExecutorsRunning
+      expr: spark_app_executor_running == 0 and spark_app_state{state="RUNNING"} > 0
+      for: 5m
+      labels:
+        severity: critical
+        component: spark-resources
+      annotations:
+        summary: "Spark application has no running executors"
+        description: "Application {{ $labels.app_name }} is in RUNNING state but has no executors running."
+

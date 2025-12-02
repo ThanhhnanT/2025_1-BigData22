@@ -1,0 +1,48 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Airflow specific
+airflow.db
+airflow.cfg
+*.db
+state/
+
+# Git
+.git/
+.gitignore
+
+# Helm charts
+airflow-*.tgz
+charts/
+
+# Documentation
+docs/
+*.md
+README*
+
+# Other
+.DS_Store
+*.pyc
+.pytest_cache/
+
+

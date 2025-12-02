@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import random
 
 TICKERS = ['BTC-USD', 'ETH-USD', 'XRP-USD', 'LTC-USD', 'BCH-USD', 'ADA-USD', 'DOT-USD', 'LINK-USD', 'XLM-USD', 'DOGE-USD']
-OUTPUT_DIR = "streaming_test_data"       
+OUTPUT_DIR = "streaming_test_data"
 SLEEP_INTERVAL = 10
 NUM_FILES = 60
 os.makedirs(OUTPUT_DIR, exist_ok=True)

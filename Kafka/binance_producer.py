@@ -6,7 +6,6 @@ import threading
 KAFKA_BROKER = "192.168.49.2:30599"
 TOPIC = "crypto_kline_1m"
 
-# Danh sách các đồng tiền ảo muốn stream (có thể thêm/bớt tùy ý)
 CRYPTO_SYMBOLS = [
     "BTC",   # Bitcoin
     "ETH",   # Ethereum
@@ -22,12 +21,10 @@ CRYPTO_SYMBOLS = [
     "UNI",   # Uniswap
     "LTC",   # Litecoin
     "ATOM",  # Cosmos
-    "ETC",   # Ethereum Classic
+    "ETC",
 ]
 
-# Tạo combined stream URL cho nhiều đồng tiền
 def build_stream_url(symbols):
-    """Tạo URL stream kết hợp cho nhiều đồng tiền"""
     streams = [f"{symbol.lower()}usdt@kline_1m" for symbol in symbols]
     stream_path = "/".join(streams)
     return f"wss://stream.binance.com:9443/stream?streams={stream_path}"
@@ -42,20 +39,16 @@ producer = KafkaProducer(
 
 def on_message(ws, message):
     data = json.loads(message)
-    # Combined stream trả về data với format: {"stream": "btcusdt@kline_1m", "data": {...}}
     if "data" in data:
         kline_data = data["data"]
         stream_name = data.get("stream", "")
     else:
-        # Fallback cho single stream format
         kline_data = data
         stream_name = ""
 
     kline = kline_data.get("k", {})
     if kline:
         symbol = kline.get("s", "UNKNOWN")
-        # Sử dụng symbol làm key để đảm bảo cùng một đồng tiền luôn vào cùng partition
-        # Điều này giúp đảm bảo thứ tự và cho phép parallel processing
         producer.send(TOPIC, value=kline)
         interval = kline.get("i", "")
         open_price = kline.get("o", "")
@@ -85,6 +78,6 @@ def run_websocket():
 
 if __name__ == "__main__":
     print(f"Starting producer for {len(CRYPTO_SYMBOLS)} cryptocurrencies...")
-    print(f"Stream URL: {STREAM_URL[:100]}...")  # Print first 100 chars
+    print(f"Stream URL: {STREAM_URL[:100]}...")
     t = threading.Thread(target=run_websocket)
     t.start()

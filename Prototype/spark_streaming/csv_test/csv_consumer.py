@@ -19,7 +19,7 @@ raw_df = spark.readStream \
     .schema(schema) \
     .csv("streaming_test_data")
 
-processed_df = raw_df.withColumn("timestamp", col("timestamp").cast(TimestampType())) 
+processed_df = raw_df.withColumn("timestamp", col("timestamp").cast(TimestampType()))
 price_ranking_df = processed_df \
     .select("ticker", "price") \
     .orderBy(col("price").desc())
