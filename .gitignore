@@ -1,19 +1,89 @@
+# Environment variables
 .env
-.env
-g-research-crypto-forecasting/
-airflow/logs/
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Database files
 **/*.db
 **/*.sqlite
 **/*.sqlite3
+airflow/airflow.db
+
+# Process ID files
 **/*.pid
 
-# Other runtime or state directories
-__pycache__/
-*.pyc
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-airflow/dags/__pycache__/
-**/*.json
+# Next.js (Frontend)
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
 
-airflow/airflow.db
-.idea/
+# Logs
+logs/
+*.log
+airflow/logs/
+airflow/dag_processor/
 
+# State and runtime directories
+state/
+airflow/state/
+Kafka/state/
+
+# Generated files
+*.generated
+*.gen
+
+# Helm charts
+**/*.tgz
+**/Chart.lock
+
+# Airflow specific
+airflow/airflow-webserver.pid
+airflow/standalone_admin_password.txt
+airflow/simple_auth_manager_passwords.json.generated
+
+# Dataset (if large)
+g-research-crypto-forecasting/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage/
+*.cover
+.pytest_cache/

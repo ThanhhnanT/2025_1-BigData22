@@ -24,7 +24,7 @@ schema = StructType() \
 
 df = spark.readStream \
     .format("kafka") \
-    .option("kafka.bootstrap.servers", "192.168.49.2:30113") \
+    .option("kafka.bootstrap.servers", "192.168.49.2:30346") \
     .option("subscribe", "crypto_kline_1m") \
     .load() \
     .selectExpr("CAST(value AS STRING) as json_value")

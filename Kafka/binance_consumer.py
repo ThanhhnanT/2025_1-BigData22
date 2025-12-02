@@ -27,24 +27,17 @@ for msg in consumer:
     high_price = float(kline.get("h", 0))
     low_price = float(kline.get("l", 0))
     volume = float(kline.get("v", 0))
-    is_closed = kline.get("x", False)  # True nếu kline đã đóng
+    is_closed = kline.get("x", False)
     
-    # Tính % thay đổi giá
     price_change = ((close_price - open_price) / open_price * 100) if open_price > 0 else 0
     change_symbol = "📈" if price_change >= 0 else "📉"
     
-    # Format timestamp
     open_time = datetime.fromtimestamp(int(kline.get("t", 0)) / 1000).strftime("%Y-%m-%d %H:%M:%S")
     
-    # Thông tin partition và offset (hữu ích khi chạy nhiều consumer)
     partition_info = f"Partition: {msg.partition}, Offset: {msg.offset}"
     
-    # Hiển thị thông tin
     print(f"\n[{open_time}] {symbol} ({interval}) | {partition_info}")
     print(f"  Open:  ${open_price:.4f}  |  Close: ${close_price:.4f}  |  {change_symbol} {price_change:+.2f}%")
     print(f"  High:  ${high_price:.4f}  |  Low:   ${low_price:.4f}")
     print(f"  Volume: {volume:.2f}  |  Closed: {'Yes' if is_closed else 'No'}")
     print("-" * 80)
-    
-    # Uncomment dòng dưới nếu muốn xem toàn bộ raw data
-    # pprint(kline)

@@ -47,7 +47,7 @@ Bạn sẽ thấy các pod như:
 
 * hadoop-hadoop-hdfs-nn-0 (NameNode)  
 * hadoop-hadoop-hdfs-dn-0 (DataNode 1\)  
-* hadoop-hadoop-hdfs-dn-1 (DataNode 2\)  
+* hadoop-hadoop-hdfs-sdn-1 (DataNode 2\)  
 * hadoop-hadoop-yarn-rm-0 (ResourceManager \- đi kèm chart)  
 * hadoop-hadoop-yarn-nm-0 (NodeManager \- đi kèm chart)
 

@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 interface CandleData {
-  x: number; 
+  x: number;
   y: [number, number, number, number];
   volume?: number;
 }
@@ -97,7 +97,7 @@ export default function CandlestickChart() {
             updated[index] = newCandle;
           } else {
             updated = [...oldData, newCandle];
-            if (updated.length > 100) updated.shift(); 
+            if (updated.length > 100) updated.shift();
           }
 
           return [{ data: updated }];
