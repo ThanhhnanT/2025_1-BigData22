@@ -2,6 +2,8 @@
 
 This repository contains a **fully integrated, production-ready data pipeline** that supports both **batch** and **streaming** data processing using open-source technologies. It is designed to be easily configured and deployed by any business or individual with minimal modifications.
 
+![pipeline][pipeline.png]
+
 The pipeline incorporates:
 
 - **Data Ingestion:**  
