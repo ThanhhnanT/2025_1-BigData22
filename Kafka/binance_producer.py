@@ -2,7 +2,7 @@ import json
 from kafka import KafkaProducer
 import websocket
 import threading
-
+#KAFKA_BROKER = "localhost:9092"
 KAFKA_BROKER = "192.168.49.2:30599"
 TOPIC = "crypto_kline_1m"
 
