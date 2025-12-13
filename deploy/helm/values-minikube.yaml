@@ -1,0 +1,85 @@
+global:
+  env: minikube
+  storageClass: standard
+
+namespaces:
+  infra: crypto-infra
+  monitoring: crypto-monitoring
+
+kafka:
+  enabled: true
+  releaseName: strimzi-kafka-operator
+  namespace: crypto-infra
+  chart:
+    repo: strimzi/strimzi-kafka-operator
+    version: ""
+  values:
+
+sparkOperator:
+  enabled: true
+  releaseName: crypto-spark-operator
+  namespace: crypto-infra
+  chart:
+    repo: spark/spark-kubernetes-operator
+    version: "1.4.0"
+  valuesFile: ../../Spark/config/operator-values-minikube.yaml
+
+airflow:
+  enabled: true
+  releaseName: crypto-airflow
+  namespace: crypto-infra
+  chart:
+    path: ../../airflow/airflow
+  values:
+    executor: CeleryExecutor
+    images:
+      airflow:
+        repository: crypto-airflow
+        tag: latest
+        pullPolicy: IfNotPresent
+        values:
+          redis:
+            password: "EF9tfX4IdN"
+          data:
+            brokerUrlSecretName: ~
+    webserver:
+      service:
+        type: NodePort
+        nodePort: 30808
+    logs:
+      persistence:
+        enabled: false
+    dags:
+      persistence:
+        enabled: false
+    statsd:
+      enabled: true
+
+monitoring:
+  enabled: true
+  releaseName: crypto-monitoring
+  namespace: crypto-monitoring
+  chart:
+    repo: prometheus-community/kube-prometheus-stack
+    version: ""
+  values:
+    grafana:
+      service:
+        type: NodePort
+        nodePort: 32000
+    prometheus:
+      service:
+        type: ClusterIP
+      prometheusSpec:
+        additionalScrapeConfigs:
+          - job_name: kafka
+            static_configs:
+              - targets: ['crypto-kafka.crypto-infra.svc.cluster.local:9092']
+          - job_name: spark-operator
+            static_configs:
+              - targets: ['crypto-spark-operator-metrics.crypto-infra.svc.cluster.local:10254']
+          - job_name: airflow-statsd
+            static_configs:
+              - targets: ['crypto-airflow-statsd.crypto-infra.svc.cluster.local:9125']
+
+
