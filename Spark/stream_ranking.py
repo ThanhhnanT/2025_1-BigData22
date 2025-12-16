@@ -43,20 +43,20 @@ ranking_df = processed_df \
     ) \
     .orderBy(desc("latest_price")) 
 
-query = ranking_df.writeStream \
-    .outputMode("complete") \
-    .format("console") \
-    .option("truncate", "false") \
-    .option("checkpointLocation", CHECKPOINT_PATH) \
-    .trigger(processingTime='5 seconds') \
-    .start()
-
 # query = ranking_df.writeStream \
-#     .outputMode("update") \
-#     .format("kafka") \
-#     .option("kafka.bootstrap.servers", KAFKA_BROKER) \
-#     .option("topic", "crypto_ranking") \
+#     .outputMode("complete") \
+#     .format("console") \
+#     .option("truncate", "false") \
 #     .option("checkpointLocation", CHECKPOINT_PATH) \
+#     .trigger(processingTime='5 seconds') \
 #     .start()
+
+query = ranking_df.writeStream \
+    .outputMode("update") \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", KAFKA_BROKER) \
+    .option("topic", "crypto_ranking") \
+    .option("checkpointLocation", CHECKPOINT_PATH) \
+    .start()
 
 query.awaitTermination()
