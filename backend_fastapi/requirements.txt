@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+redis==5.2.1
+motor==3.6.0
+kafka-python==2.0.2
+pydantic==2.10.3
+pydantic-settings==2.6.1
+pytest==8.3.4
+

@@ -1,0 +1,37 @@
+apiVersion: spark.apache.org/v1
+kind: SparkApplication
+metadata:
+  name: ohlc-1d-aggregator
+  namespace: crypto-infra
+spec:
+  driverArgs:
+    - local:///opt/spark/jobs/ohlc_1d_aggregator.py
+  pyFiles: local:///opt/spark/jobs/ohlc_1d_aggregator.py
+  sparkConf:
+    spark.kubernetes.authenticate.driver.serviceAccountName: spark
+    spark.kubernetes.executor.deleteOnTermination: "true"
+    spark.kubernetes.driver.deleteOnTermination: "true"
+    spark.master: k8s://https://kubernetes.default.svc
+    spark.submit.deployMode: cluster
+    spark.driver.cores: "1"
+    spark.driver.memory: "512m"
+    spark.executor.cores: "1"
+    spark.executor.instances: "1"
+    spark.executor.memory: "512m"
+    spark.app.name: OHLC-1d-Aggregator
+    spark.kubernetes.container.image: vvt/spark-crypto:3.5.0
+    # Mongo env (driver & executor)
+    spark.kubernetes.driverEnv.MONGO_URI: mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net
+    spark.kubernetes.driverEnv.MONGO_DB: CRYPTO
+    spark.kubernetes.driverEnv.SOURCE_COLLECTION: 1h_kline
+    spark.kubernetes.driverEnv.TARGET_COLLECTION: 1d_kline
+    spark.kubernetes.executorEnv.MONGO_URI: mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net
+    spark.kubernetes.executorEnv.MONGO_DB: CRYPTO
+    spark.kubernetes.executorEnv.SOURCE_COLLECTION: 1h_kline
+    spark.kubernetes.executorEnv.TARGET_COLLECTION: 1d_kline
+  runtimeVersions:
+    sparkVersion: "3.5"
+  deploymentMode: ClusterMode
+  applicationTolerations:
+    resourceRetainPolicy: Always
+

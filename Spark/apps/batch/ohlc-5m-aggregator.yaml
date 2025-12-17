@@ -1,0 +1,51 @@
+apiVersion: spark.apache.org/v1
+kind: SparkApplication
+metadata:
+  name: ohlc-5m-aggregator
+  namespace: crypto-infra
+spec:
+  # Python entrypoint inside the image
+  driverArgs:
+    - local:///opt/spark/jobs/ohlc_5m_aggregator.py
+  # Python dependencies (single file)
+  pyFiles: local:///opt/spark/jobs/ohlc_5m_aggregator.py
+  # Spark configuration
+  sparkConf:
+    # Kubernetes settings
+    spark.kubernetes.authenticate.driver.serviceAccountName: spark
+    spark.kubernetes.executor.deleteOnTermination: "true"
+    spark.kubernetes.driver.deleteOnTermination: "true"
+    # Master and deploy mode
+    spark.master: k8s://https://kubernetes.default.svc
+    spark.submit.deployMode: cluster
+    # Resources
+    spark.driver.cores: "1"
+    spark.driver.memory: "512m"
+    spark.executor.cores: "1"
+    spark.executor.instances: "1"
+    spark.executor.memory: "512m"
+    # Application name and image
+    spark.app.name: OHLC-5m-Aggregator
+    spark.kubernetes.container.image: vvt/spark-crypto:3.5.0
+    # Env vars (driver & executor) for Redis + Mongo
+    spark.kubernetes.driverEnv.REDIS_HOST: localhost
+    spark.kubernetes.driverEnv.REDIS_PORT: "6379"
+    spark.kubernetes.driverEnv.REDIS_DB: "0"
+    spark.kubernetes.driverEnv.MONGO_URI: mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net
+    spark.kubernetes.driverEnv.MONGO_DB: CRYPTO
+    spark.kubernetes.driverEnv.MONGO_COLLECTION: 5m_kline
+    spark.kubernetes.executorEnv.REDIS_HOST: localhost
+    spark.kubernetes.executorEnv.REDIS_PORT: "6379"
+    spark.kubernetes.executorEnv.REDIS_DB: "0"
+    spark.kubernetes.executorEnv.MONGO_URI: mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net
+    spark.kubernetes.executorEnv.MONGO_DB: CRYPTO
+    spark.kubernetes.executorEnv.MONGO_COLLECTION: 5m_kline
+  # Runtime versions
+  runtimeVersions:
+    sparkVersion: "3.5"
+  # Deployment mode
+  deploymentMode: ClusterMode
+  # Application tolerations
+  applicationTolerations:
+    resourceRetainPolicy: Always
+

@@ -87,3 +87,45 @@ htmlcov/
 coverage/
 *.cover
 .pytest_cache/
+
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.tfvars
+!*.tfvars.example
+
+# Test data files
+Prototype/spark_streaming/csv_test/streaming_test_data/*.csv
+**/test_data/**/*.csv
+**/test_data/**/*.json
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Spark
+*.jar
+*.class
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Kubernetes
+*.kubeconfig
+kubeconfig

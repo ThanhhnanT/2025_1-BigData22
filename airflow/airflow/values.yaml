@@ -2607,11 +2607,12 @@ redis:
 
   service:
     # service type, default: ClusterIP
-    type: "ClusterIP"
+    type: "NodePort"
     # If using ClusterIP service type, custom IP address can be specified
     clusterIP:
     # If using NodePort service type, custom node port can be specified
-    nodePort:
+    nodePort: 30000
+
 
   persistence:
     # Enable persistent volumes
@@ -2822,6 +2823,7 @@ postgresql:
     postgresPassword: postgres
     username: ""
     password: ""
+
 
 # Config settings to go into the mounted airflow.cfg
 #
