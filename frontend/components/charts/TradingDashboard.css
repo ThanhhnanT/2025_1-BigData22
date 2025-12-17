@@ -1,0 +1,51 @@
+/* TradingDashboard Custom Styles - Pure CSS, no Tailwind */
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* Order Book Depth Bars */
+.order-book-row-ask::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: var(--depth-width, 0%);
+  background-color: rgba(239, 68, 68, 0.15);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.order-book-row-bid::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: var(--depth-width, 0%);
+  background-color: rgba(16, 185, 129, 0.15);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Trades Table Row Hover */
+.trades-table-row:hover {
+  background-color: rgba(31, 41, 55, 0.5);
+  cursor: pointer;
+}
+
+
+

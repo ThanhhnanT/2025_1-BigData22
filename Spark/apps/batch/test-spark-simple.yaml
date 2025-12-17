@@ -1,0 +1,42 @@
+apiVersion: spark.apache.org/v1
+kind: SparkApplication
+metadata:
+  name: test-spark-simple
+  namespace: crypto-infra
+spec:
+  # Use spark-submit to run Python file
+  # The driverArgs will be passed to spark-submit
+  # NOTE: The file path assumes the file is in the Docker image at /opt/spark/jobs/
+  # Option 1: Build custom image from Spark/Dockerfile (includes batch/ files)
+  # Option 2: Use ConfigMap to mount the file (see Spark docs for details)
+  driverArgs:
+    - local:///opt/spark/jobs/test_spark_simple.py
+  # Python files (must be a string, comma-separated if multiple)
+  pyFiles: local:///opt/spark/jobs/test_spark_simple.py
+  # Spark configuration - all settings go here
+  sparkConf:
+  
+    # Kubernetes settings
+    spark.kubernetes.authenticate.driver.serviceAccountName: spark
+    spark.kubernetes.executor.deleteOnTermination: "true"
+    spark.kubernetes.driver.deleteOnTermination: "true"
+    # Master and deploy mode
+    spark.master: k8s://https://kubernetes.default.svc
+    spark.submit.deployMode: cluster
+    # Resources
+    spark.driver.cores: "1"
+    spark.driver.memory: "512m"
+    spark.executor.cores: "1"
+    spark.executor.instances: "1"
+    spark.executor.memory: "512m"
+    # Application name
+    spark.app.name: Spark-Simple-Test
+    spark.kubernetes.container.image: vvt/spark-crypto:3.5.0
+  # Runtime versions
+  runtimeVersions:
+    sparkVersion: "3.5"
+  # Deployment mode
+  deploymentMode: ClusterMode
+  # Application tolerations
+  applicationTolerations:
+    resourceRetainPolicy: Always
