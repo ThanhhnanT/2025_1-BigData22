@@ -4,7 +4,7 @@ from kafka import KafkaConsumer
 import redis
 from datetime import datetime
 
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "192.168.49.2:30599")
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "192.168.49.2:30995")
 TOPIC = os.getenv("KAFKA_TOPIC", "crypto_kline_1m")
 CONSUMER_GROUP = os.getenv("CONSUMER_GROUP", "redis_writer_group")
 
@@ -34,6 +34,10 @@ def save_to_redis(kline_data):
     close_time = kline_data.get("T")  # Close time in milliseconds
     is_closed = kline_data.get("x", False)
     
+    # Chỉ lưu trữ khi candle đã đóng (x=true)
+    if not is_closed:
+        return None, False
+    
     key = f"crypto:{symbol}:1m:{open_time}"
     
     value = {
@@ -52,18 +56,19 @@ def save_to_redis(kline_data):
         "updatedAt": datetime.now().isoformat()
     }
     
-    ttl_seconds = 86400 if is_closed else 300
-    
+    # Lưu candle đã đóng với TTL 24h
     redis_client.setex(
         key,
-        ttl_seconds,
+        86400,  # 24 hours
         json.dumps(value)
     )
     
+    # Thêm vào index (chỉ candles đã đóng)
     index_key = f"crypto:{symbol}:1m:index"
     redis_client.zadd(index_key, {str(open_time): open_time})
     redis_client.expire(index_key, 86400 * 7)
     
+    # Cập nhật latest (chỉ candles đã đóng)
     latest_key = f"crypto:{symbol}:1m:latest"
     redis_client.setex(latest_key, 86400, json.dumps(value))
     
@@ -83,8 +88,6 @@ try:
     for msg in consumer:
         kline = msg.value
         
-        key, is_closed = save_to_redis(kline)
-        
         symbol = kline.get("s", "UNKNOWN")
         interval = kline.get("i", "")
         open_price = float(kline.get("o", 0))
@@ -92,22 +95,26 @@ try:
         high_price = float(kline.get("h", 0))
         low_price = float(kline.get("l", 0))
         volume = float(kline.get("v", 0))
-        
-        price_change = ((close_price - open_price) / open_price * 100) if open_price > 0 else 0
-        change_symbol = "📈" if price_change >= 0 else "📉"
+        is_closed = kline.get("x", False)
         
         open_time = datetime.fromtimestamp(int(kline.get("t", 0)) / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        
         status = "✅ CLOSED" if is_closed else "⏳ OPEN"
         
         print(f"\n[{open_time}] {symbol} ({interval}) | {status}")
-        print(f"  Redis Key: {key}")
+        
+        # Chỉ lưu vào Redis khi candle đã đóng (x=true)
+        if is_closed:
+            key, _ = save_to_redis(kline)
+            print(f"  Redis Key: {key}")
+            print(f"  → Kline đã đóng, đã lưu vào Redis (TTL: 24h)")
+        else:
+            print(f"  ⏭️  Kline đang mở (x=false), không lưu vào Redis")
+        
+        price_change = ((close_price - open_price) / open_price * 100) if open_price > 0 else 0
+        change_symbol = "📈" if price_change >= 0 else "📉"
         print(f"  OHLC: O=${open_price:.4f} H=${high_price:.4f} L=${low_price:.4f} C=${close_price:.4f} {change_symbol} {price_change:+.2f}%")
         print(f"  Volume: {volume:.2f} | Trades: {kline.get('n', 0)}")
         print(f"  Partition: {msg.partition}, Offset: {msg.offset}")
-        
-        if is_closed:
-            print(f"  → Kline đã đóng, sẵn sàng cho OHLC 5m aggregation")
         
         print("-" * 80)
             

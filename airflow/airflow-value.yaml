@@ -2,6 +2,6 @@ postgresql:
   enabled: true
   image:
     registry: docker.io
-    repository: bitnami/postgresql
-    tag: latest
+    repository: postgres
+    tag: 15.15
 

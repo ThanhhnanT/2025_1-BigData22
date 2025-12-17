@@ -1,16 +1,213 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Global Styles - Pure CSS, no Tailwind */
 
-body {
-  @apply bg-gray-50 text-gray-900;
+* {
+  box-sizing: border-box;
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+html {
+  background-color: #111827;
+  color: #fff;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #111827;
+  color: #fff;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #181a20;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2b3139;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b434d;
+}
+
+/* Ant Design Custom Styles - Binance Theme */
+.custom-select .ant-select-selector {
+  background-color: #1e2329 !important;
+  border-color: #2b3139 !important;
+  color: #eaecef !important;
+  border-radius: 6px !important;
+  height: 36px !important;
+  padding: 4px 11px !important;
+  font-weight: 500;
+}
+
+.custom-select .ant-select-selector:hover {
+  border-color: #474d57 !important;
+}
+
+.custom-select.ant-select-focused .ant-select-selector {
+  border-color: #0ecb81 !important;
+  box-shadow: 0 0 0 2px rgba(14, 203, 129, 0.1) !important;
+}
+
+.custom-select .ant-select-selection-item {
+  color: #eaecef !important;
+  font-weight: 500;
+}
+
+.custom-select .ant-select-arrow {
+  color: #848e9c;
+}
+
+/* Dropdown Menu */
+.ant-select-dropdown {
+  background-color: #1e2329 !important;
+  border: 1px solid #2b3139 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+.ant-select-item {
+  color: #eaecef !important;
+  background-color: #1e2329 !important;
+}
+
+.ant-select-item:hover {
+  background-color: #2b3139 !important;
+}
+
+.ant-select-item-option-selected {
+  background-color: rgba(14, 203, 129, 0.1) !important;
+  color: #0ecb81 !important;
+  font-weight: 600;
+}
+
+/* Buttons */
+.ant-btn {
+  background-color: #1e2329;
+  border-color: #2b3139;
+  color: #eaecef;
+  border-radius: 6px;
+  font-weight: 500;
+  height: 36px;
+  padding: 4px 16px;
+  transition: all 0.2s;
+}
+
+.ant-btn:hover {
+  background-color: #2b3139 !important;
+  border-color: #474d57 !important;
+  color: #eaecef !important;
+}
+
+.ant-btn-primary {
+  background-color: #0ecb81 !important;
+  border-color: #0ecb81 !important;
+  color: #fff !important;
+}
+
+.ant-btn-primary:hover {
+  background-color: #0db972 !important;
+  border-color: #0db972 !important;
+}
+
+.ant-btn:focus {
+  border-color: #0ecb81;
+  box-shadow: 0 0 0 2px rgba(14, 203, 129, 0.1);
+}
+
+/* Badge */
+.ant-badge-status-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.ant-badge-status-success {
+  background-color: #0ecb81;
+}
+
+.ant-badge-status-text {
+  color: #0ecb81;
+  margin-left: 8px;
+}
+
+/* Table Styles */
+.ant-table {
+  background-color: transparent;
+  color: #fff;
+  font-size: 12px;
+}
+
+.ant-table-thead > tr > th {
+  background-color: #1f2937 !important;
+  border-bottom: 1px solid #374151 !important;
+  color: #fff !important;
+  font-weight: 500;
+  padding: 8px 16px;
+  font-size: 11px;
+}
+
+.ant-table-tbody > tr > td {
+  background-color: transparent !important;
+  border-bottom: 1px solid #374151 !important;
+  color: #fff !important;
+  padding: 8px 16px;
+  font-size: 12px;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background-color: rgba(31, 41, 55, 0.5) !important;
+}
+
+.ant-table-tbody > tr {
+  transition: background-color 0.2s;
+}
+
+.order-book-table .ant-table-tbody > tr {
+  position: relative;
+}
+
+.order-book-table .ant-table-tbody > tr > td {
+  position: relative;
+  z-index: 10;
+}
+
+.trades-table .ant-table-tbody > tr > td {
+  font-family: 'Courier New', monospace;
+}
+
+/* Ensure Cols have same height */
+.ant-row > .ant-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.ant-row > .ant-col > section,
+.ant-row > .ant-col > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Typography */
+.ant-typography {
+  color: #fff;
+}
+
+.ant-typography h1,
+.ant-typography h2,
+.ant-typography h3,
+.ant-typography h4,
+.ant-typography h5 {
+  color: #fff;
 }
