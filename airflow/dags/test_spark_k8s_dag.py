@@ -1,11 +1,9 @@
-import os
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
-# Get workspace path
-WORKSPACE_PATH = "/home/vvt/D/SubjectResource/IT4931_BigData_Processing_and_Storage/CRYPTO"
-SPARK_PATH = os.path.join(WORKSPACE_PATH, "Spark")
+# Đường dẫn SparkApplication YAMLs bên trong container Airflow
+SPARK_APPS_PATH = "/opt/airflow/dags/spark_apps"
 
 default_args = {
     "owner": "crypto_team",
@@ -29,12 +27,12 @@ with DAG(
     test_spark_task = BashOperator(
         task_id="test_spark_simple",
         bash_command=f"""
-            cd {SPARK_PATH} && \
+            cd {SPARK_APPS_PATH} && \
             echo "🧹 Cleaning up any existing SparkApplication..." && \
             kubectl delete sparkapplication test-spark-simple -n crypto-infra --ignore-not-found=true && \
             sleep 3 && \
             echo "📝 Applying SparkApplication manifest..." && \
-            kubectl apply -f apps/batch/test-spark-simple.yaml && \
+            kubectl apply -f test-spark-simple.yaml && \
             sleep 5 && \
             echo "🔍 Waiting for driver pod to be created..." && \
             timeout 60 bash -c 'until kubectl get pods -n crypto-infra | grep -q "test-spark-simple.*driver"; do sleep 2; done' || true && \

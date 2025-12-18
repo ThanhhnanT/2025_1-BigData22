@@ -64,7 +64,11 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
   const loadedRangeRef = useRef<{ min: number; max: number } | null>(null);
   const loadMorePastRef = useRef<(() => void | Promise<void>) | null>(null);
   const lastLoadMoreTimeRef = useRef<number>(0);
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+  // Share same API/WS base strategy as TradingDashboard
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_BASE ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://crypto.local/api";
   const WS_BASE = API_BASE.replace(/^http/, "ws");
 
   useEffect(() => {
