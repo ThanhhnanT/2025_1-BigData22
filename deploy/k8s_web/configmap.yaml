@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crypto-config
+  namespace: crypto-app
+data:
+  APP_ENV: "minikube"
+  KAFKA_BOOTSTRAP: "192.168.49.2:30995"
+
+  REDIS_HOST: "192.168.49.2"
+  REDIS_PORT: "31001"
+  REDIS_DB: "0"
+  REDIS_PASSWORD: "123456"
+
+  MONGO_URI: "mongodb://root:8WcVPD9QHx@192.168.49.2:30376/"
+  MONGO_DB: "CRYPTO"
+  MONGO_COLLECTION_OHLC: "5m_kline"

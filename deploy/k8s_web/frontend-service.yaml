@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-next-service
+  namespace: crypto-app
+spec:
+  type: ClusterIP
+  selector:
+    app: frontend-next
+  ports:
+    - port: 3000
+      targetPort: 3000
+
+

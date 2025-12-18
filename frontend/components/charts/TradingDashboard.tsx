@@ -48,7 +48,7 @@ export default function TradingDashboard() {
   const [currentPrice, setCurrentPrice] = useState<number>(0);
   const [priceChange, setPriceChange] = useState<number>(0);
   const [granularity, setGranularity] = useState<string>("0.1");
-  const [mode, setMode] = useState<"history" | "realtime">("realtime");
+  const [mode, setMode] = useState<"realtime" | "7day" | "30day" | "6month" | "1year">("realtime");
   
   const wsOrderBookRef = useRef<WebSocket | null>(null);
   const wsTradesRef = useRef<WebSocket | null>(null);
@@ -668,18 +668,6 @@ export default function TradingDashboard() {
               gap: '4px',
             }}>
               <Button
-                type={mode === "history" ? "primary" : "default"}
-                onClick={() => setMode("history")}
-                size="small"
-                style={{
-                  backgroundColor: mode === "history" ? '#374151' : 'transparent',
-                  color: '#fff',
-                  border: 'none',
-                }}
-              >
-                Historical (5m)
-              </Button>
-              <Button
                 type={mode === "realtime" ? "primary" : "default"}
                 onClick={() => setMode("realtime")}
                 size="small"
@@ -689,7 +677,55 @@ export default function TradingDashboard() {
                   border: 'none',
                 }}
               >
-                Real-Time
+                Realtime
+              </Button>
+              <Button
+                type={mode === "7day" ? "primary" : "default"}
+                onClick={() => setMode("7day")}
+                size="small"
+                style={{
+                  backgroundColor: mode === "7day" ? '#374151' : 'transparent',
+                  color: '#fff',
+                  border: 'none',
+                }}
+              >
+                7 Day
+              </Button>
+              <Button
+                type={mode === "30day" ? "primary" : "default"}
+                onClick={() => setMode("30day")}
+                size="small"
+                style={{
+                  backgroundColor: mode === "30day" ? '#374151' : 'transparent',
+                  color: '#fff',
+                  border: 'none',
+                }}
+              >
+                30 Day
+              </Button>
+              <Button
+                type={mode === "6month" ? "primary" : "default"}
+                onClick={() => setMode("6month")}
+                size="small"
+                style={{
+                  backgroundColor: mode === "6month" ? '#374151' : 'transparent',
+                  color: '#fff',
+                  border: 'none',
+                }}
+              >
+                6 Month
+              </Button>
+              <Button
+                type={mode === "1year" ? "primary" : "default"}
+                onClick={() => setMode("1year")}
+                size="small"
+                style={{
+                  backgroundColor: mode === "1year" ? '#374151' : 'transparent',
+                  color: '#fff',
+                  border: 'none',
+                }}
+              >
+                1 Year
               </Button>
             </div>
           </div>
@@ -722,7 +758,15 @@ export default function TradingDashboard() {
                 <Title level={5} style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {symbol.replace("USDT", "/USDT")}{" "}
                   <Text style={{ color: '#fff', fontSize: '14px', fontWeight: 'normal' }}>
-                    - {mode === "realtime" ? "Real-Time (1m)" : "Historical (5m)"}
+                    - {mode === "realtime"
+                      ? "Real-Time (1m)"
+                      : mode === "7day"
+                      ? "7 Day (5m)"
+                      : mode === "30day"
+                      ? "30 Day (1h)"
+                      : mode === "6month"
+                      ? "6 Month (4h)"
+                      : "1 Year (1d)"}
                   </Text>
                 </Title>
               </div>
