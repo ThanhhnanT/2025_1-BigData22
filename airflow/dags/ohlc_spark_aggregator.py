@@ -1,11 +1,11 @@
-import os
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
-# Get workspace path
-WORKSPACE_PATH = "/home/vvt/D/SubjectResource/IT4931_BigData_Processing_and_Storage/CRYPTO"
-SPARK_PATH = os.path.join(WORKSPACE_PATH, "Spark")
+# Đường dẫn SparkApplication YAMLs bên trong container Airflow
+# Đã được copy trong Dockerfile:
+#   COPY --chown=airflow:root Spark/apps/batch/ /opt/airflow/dags/spark_apps/
+SPARK_APPS_PATH = "/opt/airflow/dags/spark_apps"
 
 default_args = {
     "owner": "crypto_team",
@@ -29,12 +29,12 @@ with DAG(
     aggregate_5m_task = BashOperator(
         task_id="spark_aggregate_5m",
         bash_command=f"""
-        cd {SPARK_PATH} && \
+        cd {SPARK_APPS_PATH} && \
         echo "🧹 Cleaning up any existing SparkApplication..." && \
         kubectl delete sparkapplication ohlc-5m-aggregator -n crypto-infra --ignore-not-found=true && \
         sleep 3 && \
         echo "📝 Applying SparkApplication manifest..." && \
-        kubectl apply -f apps/batch/ohlc-5m-aggregator.yaml && \
+        kubectl apply -f ohlc-5m-aggregator.yaml && \
         sleep 5 && \
         echo "🔍 Waiting for driver pod to be created..." && \
         timeout 60 bash -c 'until kubectl get pods -n crypto-infra | grep -q "ohlc-5m-aggregator.*driver"; do sleep 2; done' || true && \
@@ -72,12 +72,12 @@ with DAG(
     aggregate_1h_task = BashOperator(
         task_id="spark_aggregate_1h",
         bash_command=f"""
-        cd {SPARK_PATH} && \
+        cd {SPARK_APPS_PATH} && \
         echo "🧹 Cleaning up any existing SparkApplication..." && \
         kubectl delete sparkapplication ohlc-1h-aggregator -n crypto-infra --ignore-not-found=true && \
         sleep 3 && \
         echo "📝 Applying SparkApplication manifest..." && \
-        kubectl apply -f apps/batch/ohlc-1h-aggregator.yaml && \
+        kubectl apply -f ohlc-1h-aggregator.yaml && \
         sleep 5 && \
         echo "🔍 Waiting for driver pod to be created..." && \
         timeout 60 bash -c 'until kubectl get pods -n crypto-infra | grep -q "ohlc-1h-aggregator.*driver"; do sleep 2; done' || true && \
@@ -116,12 +116,12 @@ with DAG(
     aggregate_5h_task = BashOperator(
         task_id="spark_aggregate_5h",
         bash_command=f"""
-        cd {SPARK_PATH} && \
+        cd {SPARK_APPS_PATH} && \
         echo "🧹 Cleaning up any existing SparkApplication..." && \
         kubectl delete sparkapplication ohlc-5h-aggregator -n crypto-infra --ignore-not-found=true && \
         sleep 3 && \
         echo "📝 Applying SparkApplication manifest..." && \
-        kubectl apply -f apps/batch/ohlc-5h-aggregator.yaml && \
+        kubectl apply -f ohlc-5h-aggregator.yaml && \
         sleep 5 && \
         echo "🔍 Waiting for driver pod to be created..." && \
         timeout 60 bash -c 'until kubectl get pods -n crypto-infra | grep -q "ohlc-5h-aggregator.*driver"; do sleep 2; done' || true && \
@@ -160,12 +160,12 @@ with DAG(
     aggregate_1d_task = BashOperator(
         task_id="spark_aggregate_1d",
         bash_command=f"""
-        cd {SPARK_PATH} && \
+        cd {SPARK_APPS_PATH} && \
         echo "🧹 Cleaning up any existing SparkApplication..." && \
         kubectl delete sparkapplication ohlc-1d-aggregator -n crypto-infra --ignore-not-found=true && \
         sleep 3 && \
         echo "📝 Applying SparkApplication manifest..." && \
-        kubectl apply -f apps/batch/ohlc-1d-aggregator.yaml && \
+        kubectl apply -f ohlc-1d-aggregator.yaml && \
         sleep 5 && \
         echo "🔍 Waiting for driver pod to be created..." && \
         timeout 60 bash -c 'until kubectl get pods -n crypto-infra | grep -q "ohlc-1d-aggregator.*driver"; do sleep 2; done' || true && \

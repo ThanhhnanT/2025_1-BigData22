@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: backend-fastapi
-          image: crypto-backend-fastapi:local
+          image: crypto-backend-fastapi:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
