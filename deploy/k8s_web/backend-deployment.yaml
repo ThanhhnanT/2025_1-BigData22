@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-fastapi
+  namespace: crypto-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-fastapi
+  template:
+    metadata:
+      labels:
+        app: backend-fastapi
+    spec:
+      containers:
+        - name: backend-fastapi
+          image: crypto-backend-fastapi:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: crypto-config
+            - secretRef:
+                name: crypto-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+

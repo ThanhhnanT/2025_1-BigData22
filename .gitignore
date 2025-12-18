@@ -25,6 +25,7 @@ build/
 **/*.sqlite
 **/*.sqlite3
 airflow/airflow.db
+airflow/airflow.cfg
 
 # Process ID files
 **/*.pid
@@ -46,7 +47,8 @@ next-env.d.ts
 logs/
 *.log
 airflow/logs/
-airflow/dag_processor/
+airflow/logs/dag_processor/
+Kafka/logs/
 
 # State and runtime directories
 state/

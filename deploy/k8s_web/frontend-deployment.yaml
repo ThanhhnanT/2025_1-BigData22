@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-next
+  namespace: crypto-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend-next
+  template:
+    metadata:
+      labels:
+        app: frontend-next
+    spec:
+      containers:
+        - name: frontend-next
+          image: crypto-frontend-next:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              value: "http://backend-fastapi-service.crypto-app.svc.cluster.local:8000"
+
+

@@ -18,7 +18,6 @@ from .kafka_manager import SharedKafkaManager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Shared clients
     mongo_client = AsyncIOMotorClient(settings.mongo_uri)
     app.state.mongo_client = mongo_client
     app.state.mongo_db = mongo_client[settings.mongo_db]
@@ -27,17 +26,17 @@ async def lifespan(app: FastAPI):
         host=settings.redis_host,
         port=settings.redis_port,
         db=settings.redis_db,
+        password=settings.redis_password,
         decode_responses=True,
     )
     app.state.redis = redis_client
 
-    # Initialize shared Kafka manager
     kafka_manager = SharedKafkaManager(kafka_bootstrap=settings.kafka_bootstrap)
     app.state.kafka_manager = kafka_manager
 
     yield
 
-    # Cleanup
+
     await kafka_manager.shutdown()
     await redis_client.aclose()
     mongo_client.close()
@@ -79,13 +78,33 @@ async def list_symbols():
 @app.get("/ohlc", response_model=OHLCResponse)
 async def get_ohlc(
     symbol: str = Query("BTCUSDT", description="Trading pair, e.g. BTCUSDT"),
-    interval: str = Query("5m", description="Interval (matches stored docs)"),
+    interval: Optional[str] = Query(None, description="Interval (matches stored docs)"),
+    collection: Optional[str] = Query(None, description="MongoDB collection name (e.g. kline_5m, kline_1h)"),
     limit: int = Query(200, ge=1, le=2000),
     start: Optional[int] = Query(None, description="Start openTime (ms)"),
     end: Optional[int] = Query(None, description="End openTime (ms)"),
     mongo=Depends(get_mongo),
 ):
-    col = mongo[settings.mongo_collection_ohlc]
+    # Determine collection to use
+    if collection:
+        col_name = collection
+    else:
+        col_name = settings.mongo_collection_ohlc
+    
+    if not interval:
+        if collection:
+            # Map collection names to intervals
+            collection_to_interval = {
+                "5m_kline": "5m",
+                "1h_kline": "1h",
+                "4h_kline": "4h",
+                "1d_kline": "1d",
+            }
+            interval = collection_to_interval.get(collection, "5m")
+        else:
+            interval = "5m"
+    
+    col = mongo[col_name]
     query = {"symbol": symbol, "interval": interval}
     if start is not None and end is not None:
         query["openTime"] = {"$gte": start, "$lte": end}
@@ -116,6 +135,85 @@ async def latest_kline(
         raise HTTPException(status_code=404, detail="No data for symbol")
     data = json.loads(raw)
     return LatestKline(**data)
+
+
+@app.get("/ohlc/realtime", response_model=OHLCResponse)
+async def get_ohlc_realtime(
+    symbol: str = Query("BTCUSDT", description="Trading pair, e.g. BTCUSDT"),
+    limit: int = Query(200, ge=1, le=2000, description="Number of candles to return"),
+    start: Optional[int] = Query(None, description="Start openTime (ms) - load candles before this time"),
+    end: Optional[int] = Query(None, description="End openTime (ms)"),
+    redis_client=Depends(get_redis),
+):
+    """
+    Get OHLC data from Redis for realtime mode (1m interval).
+    Used for lazy-loading historical data when user scrolls/pans backward.
+    """
+    index_key = f"crypto:{symbol}:1m:index"
+    
+    try:
+        # Get timestamps from sorted set
+        if start is not None:
+            # Load candles before start time (for backward scrolling)
+            # Get all candles before start, then take the N most recent ones
+            all_before = await redis_client.zrangebyscore(
+                index_key,
+                "-inf",
+                start - 1,
+                withscores=True
+            )
+            # Sort by score (timestamp) descending to get most recent first
+            all_before.sort(key=lambda x: x[1], reverse=True)
+            # Take the N most recent candles before start
+            timestamps = all_before[:limit]
+            # Reverse to get oldest first (for proper chronological order)
+            timestamps.reverse()
+        elif end is not None:
+            # Load candles up to end time
+            timestamps = await redis_client.zrangebyscore(
+                index_key,
+                "-inf",
+                end,
+                withscores=True,
+                start=0,
+                num=limit
+            )
+            timestamps = sorted(timestamps, key=lambda x: x[1])  # Sort ascending
+        else:
+            # Load latest N candles
+            timestamps = await redis_client.zrange(
+                index_key,
+                -limit,
+                -1,
+                withscores=True
+            )
+        
+        candles = []
+        for ts_str, score in timestamps:
+            key = f"crypto:{symbol}:1m:{ts_str}"
+            raw = await redis_client.get(key)
+            if raw:
+                data = json.loads(raw)
+                # Only include closed candles
+                if data.get("x", False):
+                    candles.append({
+                        "openTime": data["openTime"],
+                        "y": [data["open"], data["high"], data["low"], data["close"]],
+                        "volume": data["volume"],
+                    })
+        
+        # Sort by openTime ascending
+        candles.sort(key=lambda x: x["openTime"])
+        
+        return OHLCResponse(
+            symbol=symbol,
+            interval="1m",
+            count=len(candles),
+            candles=candles
+        )
+    except Exception as e:
+        print(f"Error loading realtime OHLC from Redis: {e}")
+        raise HTTPException(status_code=500, detail=f"Error loading data: {str(e)}")
 
 
 @app.get("/orderbook", response_model=OrderBookResponse)
