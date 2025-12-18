@@ -9,9 +9,15 @@ TOPIC_ORDERBOOK = os.getenv("KAFKA_TOPIC_ORDERBOOK", "crypto_orderbook")
 TOPIC_TRADES = os.getenv("KAFKA_TOPIC_TRADES", "crypto_trades")
 CONSUMER_GROUP = os.getenv("CONSUMER_GROUP", "redis_orderbook_trades_group")
 
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+#
+# Redis configuration
+# Mặc định trỏ tới Redis trên Minikube (my-redis-master NodePort).
+# Có thể override bằng biến môi trường khi chạy trong cluster.
+#
+REDIS_HOST = os.getenv("REDIS_HOST", "192.168.49.2")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 31001))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
 
 # TTL in seconds
 ORDERBOOK_TTL = 3600  # 1 hour
@@ -41,7 +47,8 @@ redis_client = redis.Redis(
     host=REDIS_HOST,
     port=REDIS_PORT,
     db=REDIS_DB,
-    decode_responses=True
+    password=REDIS_PASSWORD,
+    decode_responses=True,
 )
 
 def save_orderbook_to_redis(orderbook_data):

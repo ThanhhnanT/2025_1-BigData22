@@ -47,18 +47,23 @@ interface ApiResponse {
 
 interface ChartEmbeddedProps {
   symbol: string;
-  mode: "history" | "realtime";
+  mode: "realtime" | "7day" | "30day" | "6month" | "1year";
 }
 
 export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
   const [series, setSeries] = useState<{ data: CandleData[] }[]>([{ data: [] }]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMorePast, setIsLoadingMorePast] = useState(false);
+  const [hasMorePast, setHasMorePast] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
   const chartRef = useRef<any>(null);
   const zoomRangeRef = useRef<{ min: number; max: number } | null>(null);
   const currentSymbolRef = useRef<string>(symbol);
   const isChangingSymbolRef = useRef<boolean>(false);
+  const loadedRangeRef = useRef<{ min: number; max: number } | null>(null);
+  const loadMorePastRef = useRef<(() => void | Promise<void>) | null>(null);
+  const lastLoadMoreTimeRef = useRef<number>(0);
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
   const WS_BASE = API_BASE.replace(/^http/, "ws");
 
@@ -69,6 +74,12 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
     
     // Mark that we're changing symbol to prevent reconnections
     isChangingSymbolRef.current = true;
+
+    // Reset lazy-load state when symbol or mode changes
+    setSeries([{ data: [] }]);
+    setHasMorePast(true);
+    setIsLoadingMorePast(false);
+    loadedRangeRef.current = null;
     
     // Close existing WebSocket FIRST before updating symbol
     if (wsRef.current) {
@@ -101,19 +112,45 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
     async function fetchHistoricalData() {
       try {
         setIsLoading(true);
+        // Map mode to collection name
+        const collectionMap: Record<string, string> = {
+          "7day": "5m_kline",
+          "30day": "1h_kline",
+          "6month": "4h_kline",
+          "1year": "1d_kline",
+        };
+        const collection = collectionMap[mode];
+        
+        if (!collection) {
+          console.error("Invalid mode for historical data:", mode);
+          if (isMounted) setSeries([{ data: [] }]);
+          return;
+        }
+
         const res = await axios.get<ApiResponse>(`${API_BASE}/ohlc`, {
-          params: { symbol: symbol, interval: "5m", limit: 200 },
+          params: { symbol: symbol, collection: collection, limit: 200 },
         });
 
         if (!isMounted) return;
 
-        const formatted = (res.data?.candles || []).map((d) => ({
+        const formatted: CandleData[] = (res.data?.candles || []).map((d) => ({
           x: new Date(d.openTime).getTime(),
           y: d.y,
           volume: d.volume,
         }));
 
         setSeries([{ data: formatted }]);
+
+        // Initialize loaded range for lazy-loading
+        if (formatted.length > 0) {
+          const min = formatted[0].x;
+          const max = formatted[formatted.length - 1].x;
+          loadedRangeRef.current = { min, max };
+          setHasMorePast(true);
+        } else {
+          loadedRangeRef.current = null;
+          setHasMorePast(false);
+        }
       } catch (err) {
         console.error("❌ Error fetching historical data:", err);
         if (isMounted) setSeries([{ data: [] }]);
@@ -263,27 +300,30 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
       };
     }
 
-    if (mode === "history") {
-      fetchHistoricalData();
-      if (wsRef.current) {
-        wsRef.current.onmessage = null;
-        wsRef.current.onerror = null;
-        wsRef.current.onclose = null;
-        wsRef.current.onopen = null;
-        try {
-          wsRef.current.close();
-        } catch (e) {
-          // Ignore errors
-        }
-        wsRef.current = null;
-      }
-    } else {
+    if (mode === "realtime") {
       // Small delay to ensure cleanup is complete before connecting
       connectTimeout = setTimeout(() => {
         if (isMounted && !isChangingSymbolRef.current) {
           connectWebSocket();
         }
       }, 150);
+    } else {
+      // For historical modes (7day, 30day, 6month, 1year), fetch from MongoDB
+      fetchHistoricalData();
+
+      // Safely close any existing WebSocket connection without touching event handlers.
+      // Cast to `any` here to avoid over‑narrowing issues with the ref type in strict mode,
+      // since this is just best‑effort cleanup.
+      const ws: any = wsRef.current;
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {
+          // Ignore errors
+        } finally {
+          wsRef.current = null;
+        }
+      }
     }
 
     return () => {
@@ -315,6 +355,117 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
       }
     };
   }, [mode, symbol, API_BASE, WS_BASE]);
+
+  // Lazy-load more historical candles when user scrolls/pans near the left edge
+  useEffect(() => {
+    loadMorePastRef.current = async () => {
+      if (mode === "realtime") return;
+
+      const loadedRange = loadedRangeRef.current;
+      if (!loadedRange) return;
+      if (!hasMorePast || isLoadingMorePast) return;
+
+      const now = Date.now();
+      if (now - lastLoadMoreTimeRef.current < 1000) {
+        // debounce: don't load more than once per second
+        return;
+      }
+      lastLoadMoreTimeRef.current = now;
+
+      const collectionMap: Record<string, string> = {
+        "7day": "5m_kline",
+        "30day": "1h_kline",
+        "6month": "4h_kline",
+        "1year": "1d_kline",
+      };
+      const collection = collectionMap[mode];
+      if (!collection) return;
+
+      setIsLoadingMorePast(true);
+      try {
+        const end = loadedRange.min - 1;
+        const res = await axios.get<ApiResponse>(`${API_BASE}/ohlc`, {
+          params: {
+            symbol,
+            collection,
+            limit: 200,
+            end,
+          },
+        });
+
+        const candles = res.data?.candles || [];
+        if (candles.length === 0) {
+          setHasMorePast(false);
+          return;
+        }
+
+        const newData: CandleData[] = candles.map((d) => ({
+          x: new Date(d.openTime).getTime(),
+          y: d.y,
+          volume: d.volume,
+        }));
+
+        // Preserve current viewport before updating data
+        const chart = chartRef.current;
+        const prevMinVisible =
+          chart?.w?.globals?.minX !== undefined ? chart.w.globals.minX : null;
+        const prevMaxVisible =
+          chart?.w?.globals?.maxX !== undefined ? chart.w.globals.maxX : null;
+
+        setSeries((prev) => {
+          const existing = prev[0]?.data || [];
+          const merged = [...newData, ...existing];
+
+          // Deduplicate by x (openTime)
+          const dedupMap = new Map<number, CandleData>();
+          for (const c of merged) {
+            dedupMap.set(c.x, c);
+          }
+          const result = Array.from(dedupMap.values()).sort(
+            (a, b) => a.x - b.x
+          );
+
+          if (result.length > 0) {
+            const min = result[0].x;
+            const max = result[result.length - 1].x;
+            loadedRangeRef.current = { min, max };
+          }
+
+          return [{ data: result }];
+        });
+
+        // Restore previous viewport after data is extended
+        if (
+          chart &&
+          prevMinVisible !== null &&
+          prevMaxVisible !== null &&
+          !isNaN(prevMinVisible) &&
+          !isNaN(prevMaxVisible)
+        ) {
+          setTimeout(() => {
+            try {
+              chart.updateOptions(
+                {
+                  xaxis: {
+                    min: prevMinVisible,
+                    max: prevMaxVisible,
+                  },
+                },
+                false,
+                false
+              );
+            } catch (e) {
+              // ignore chart update errors
+            }
+          }, 0);
+        }
+      } catch (err) {
+        console.error("❌ Error loading more historical data:", err);
+      } finally {
+        setIsLoadingMorePast(false);
+      }
+    };
+  }, [API_BASE, mode, symbol, hasMorePast, isLoadingMorePast]);
 
   const options: ApexCharts.ApexOptions = useMemo(() => ({
     chart: {
@@ -365,6 +516,28 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
               min: xaxis.min,
               max: xaxis.max,
             };
+          }
+        },
+        scrolled: (chartContext: any, { xaxis }: any) => {
+          // Trigger lazy-load when user scrolls near the left edge of loaded data
+          if (!xaxis || typeof xaxis.min !== "number" || typeof xaxis.max !== "number") {
+            return;
+          }
+          if (mode === "realtime") return;
+
+          const loadedRange = loadedRangeRef.current;
+          if (!loadedRange) return;
+          if (!hasMorePast || isLoadingMorePast) return;
+
+          const totalRange = loadedRange.max - loadedRange.min;
+          if (totalRange <= 0) return;
+
+          const threshold = totalRange * 0.05; // 5% of the loaded range
+
+          if (xaxis.min <= loadedRange.min + threshold) {
+            if (loadMorePastRef.current) {
+              loadMorePastRef.current();
+            }
           }
         },
       },
@@ -455,7 +628,7 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
     },
   }), [mode]);
 
-  if (isLoading && mode === "history") {
+  if (isLoading && mode !== "realtime") {
     return (
       <div
         style={{

@@ -11,13 +11,18 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, first, last, max as spark_max, min as spark_min, sum as spark_sum
 import redis
 from pymongo import MongoClient
+from pymongo.errors import OperationFailure
 
 # Environment variables
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+# Redis: mặc định trỏ tới Redis trên Minikube (my-redis-master NodePort),
+# có thể override bằng biến môi trường (ví dụ khi chạy trong cluster).
+REDIS_HOST = os.getenv("REDIS_HOST", "192.168.49.2")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 31001))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net")
+# Local MongoDB (Helm)
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@192.168.49.2:30376/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
 MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "5m_kline")
 
@@ -40,7 +45,8 @@ def main():
         host=REDIS_HOST,
         port=REDIS_PORT,
         db=REDIS_DB,
-        decode_responses=True
+        password=REDIS_PASSWORD,
+        decode_responses=True,
     )
     
     # Connect to MongoDB
@@ -48,12 +54,40 @@ def main():
     mongo_db = mongo_client[MONGO_DB]
     mongo_collection = mongo_db[MONGO_COLLECTION]
     
-    # Create index
-    mongo_collection.create_index([
-        ("symbol", 1),
-        ("interval", 1),
-        ("openTime", 1)
-    ], unique=True)
+    # Create index (handle case where index already exists with different name)
+    # Check if index with these fields already exists
+    index_fields = [("symbol", 1), ("interval", 1), ("openTime", 1)]
+    existing_indexes = mongo_collection.list_indexes()
+    index_exists = False
+    
+    for idx in existing_indexes:
+        idx_key = idx.get("key", {})
+        # Check if an index with the same fields exists
+        if (idx_key.get("symbol") == 1 and 
+            idx_key.get("interval") == 1 and 
+            idx_key.get("openTime") == 1):
+            index_exists = True
+            print(f"  ℹ️  Index already exists: {idx.get('name', 'unnamed')}")
+            break
+    
+    if not index_exists:
+        try:
+            mongo_collection.create_index(
+                index_fields,
+                unique=True,
+                name="symbol_interval_openTime_unique"
+            )
+            print("  ✅ Index created successfully")
+        except OperationFailure as e:
+            # Code 85 = IndexOptionsConflict - index already exists with different name
+            if e.code == 85:
+                print(f"  ℹ️  Index already exists with different name, skipping creation")
+            else:
+                print(f"  ⚠️  MongoDB index creation error (code {e.code}): {e}")
+                # Don't raise - continue execution
+        except Exception as e:
+            print(f"  ⚠️  Unexpected error creating index: {e}")
+            # Don't raise - continue execution as index might already exist
     
     # Calculate time window
     now = datetime.now(timezone.utc)

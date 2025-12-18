@@ -50,15 +50,20 @@ const { Header, Content } = Layout;
 const { Text } = Typography;
 
 export default function CandlestickChart() {
-  const [mode, setMode] = useState<"history" | "realtime">("realtime");
+  const [mode, setMode] = useState<"realtime" | "7day" | "30day" | "6month" | "1year">("realtime");
   const [symbol, setSymbol] = useState<string>("BTCUSDT");
   const [symbols, setSymbols] = useState<string[]>([]);
   const [series, setSeries] = useState<{ data: CandleData[] }[]>([{ data: [] }]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMorePast, setIsLoadingMorePast] = useState(false);
+  const [hasMorePast, setHasMorePast] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
   const chartRef = useRef<any>(null);
   const zoomRangeRef = useRef<{ min: number; max: number } | null>(null);
+  const loadedRangeRef = useRef<{ min: number; max: number } | null>(null);
+  const loadMorePastRef = useRef<(() => void | Promise<void>) | null>(null);
+  const lastLoadMoreTimeRef = useRef<number>(0);
   const currentSymbolRef = useRef<string>(symbol);
   const isChangingSymbolRef = useRef<boolean>(false);
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
@@ -118,8 +123,23 @@ export default function CandlestickChart() {
     async function fetchHistoricalData() {
       try {
         setIsLoading(true);
+        // Map mode to collection name
+        const collectionMap: Record<string, string> = {
+          "7day": "5m_kline",
+          "30day": "1h_kline",
+          "6month": "4h_kline",
+          "1year": "1d_kline",
+        };
+        const collection = collectionMap[mode];
+        
+        if (!collection) {
+          console.error("Invalid mode for historical data:", mode);
+          if (isMounted) setSeries([{ data: [] }]);
+          return;
+        }
+
         const res = await axios.get<ApiResponse>(`${API_BASE}/ohlc`, {
-          params: { symbol: symbol, interval: "5m", limit: 200 },
+          params: { symbol: symbol, collection: collection, limit: 200 },
         });
 
         if (!isMounted) return;
@@ -207,6 +227,13 @@ export default function CandlestickChart() {
             if (data.type === "initial" && data.candles) {
               updated = data.candles.map(convertCandle);
               zoomRangeRef.current = null;
+              // Initialize loaded range for lazy-loading
+              if (updated.length > 0) {
+                const min = updated[0].x;
+                const max = updated[updated.length - 1].x;
+                loadedRangeRef.current = { min, max };
+                setHasMorePast(true);
+              }
             } else if (data.type === "latest" && data.candle) {
               const newCandle = convertCandle(data.candle);
               const index = updated.findIndex((d) => d.x === newCandle.x);
@@ -248,6 +275,15 @@ export default function CandlestickChart() {
             }
 
             updated.sort((a, b) => a.x - b.x);
+
+            // Update loaded range
+            if (updated.length > 0) {
+              const min = updated[0].x;
+              const max = updated[updated.length - 1].x;
+              if (!loadedRangeRef.current || min < loadedRangeRef.current.min) {
+                loadedRangeRef.current = { min, max };
+              }
+            }
 
             if (zoomRangeRef.current && chartRef.current) {
               setTimeout(() => {
@@ -296,7 +332,15 @@ export default function CandlestickChart() {
       };
     }
 
-    if (mode === "history") {
+    if (mode === "realtime") {
+      // Small delay to ensure cleanup is complete before connecting
+      connectTimeout = setTimeout(() => {
+        if (isMounted && !isChangingSymbolRef.current) {
+          connectWebSocket();
+        }
+      }, 150);
+    } else {
+      // For historical modes (7day, 30day, 6month, 1year), fetch from MongoDB
       fetchHistoricalData();
       // Close WebSocket if it exists
       const currentWs = wsRef.current;
@@ -312,13 +356,6 @@ export default function CandlestickChart() {
         }
         wsRef.current = null;
       }
-    } else {
-      // Small delay to ensure cleanup is complete before connecting
-      connectTimeout = setTimeout(() => {
-        if (isMounted && !isChangingSymbolRef.current) {
-          connectWebSocket();
-        }
-      }, 150);
     }
 
     return () => {
@@ -352,6 +389,106 @@ export default function CandlestickChart() {
       }
     };
   }, [mode, symbol, API_BASE, WS_BASE]);
+
+  // Lazy-load more historical candles from Redis when user scrolls/pans backward in realtime mode
+  useEffect(() => {
+    loadMorePastRef.current = async () => {
+      if (mode !== "realtime") return;
+
+      const loadedRange = loadedRangeRef.current;
+      if (!loadedRange) return;
+      if (!hasMorePast || isLoadingMorePast) return;
+
+      const now = Date.now();
+      if (now - lastLoadMoreTimeRef.current < 1000) {
+        // debounce: don't load more than once per second
+        return;
+      }
+      lastLoadMoreTimeRef.current = now;
+
+      setIsLoadingMorePast(true);
+      try {
+        const res = await axios.get<ApiResponse>(`${API_BASE}/ohlc/realtime`, {
+          params: {
+            symbol,
+            limit: 200,
+            start: loadedRange.min, // Load candles before this time (openTime < start)
+          },
+        });
+
+        const candles = res.data?.candles || [];
+        if (candles.length === 0) {
+          setHasMorePast(false);
+          return;
+        }
+
+        const newData: CandleData[] = candles.map((d) => ({
+          x: d.openTime,
+          y: d.y,
+          volume: d.volume,
+        }));
+
+        // Preserve current viewport before updating data
+        const chart = chartRef.current;
+        const prevMinVisible =
+          chart?.w?.globals?.minX !== undefined ? chart.w.globals.minX : null;
+        const prevMaxVisible =
+          chart?.w?.globals?.maxX !== undefined ? chart.w.globals.maxX : null;
+
+        setSeries((prev) => {
+          const existing = prev[0]?.data || [];
+          const merged = [...newData, ...existing];
+
+          // Deduplicate by x (openTime)
+          const dedupMap = new Map<number, CandleData>();
+          for (const c of merged) {
+            dedupMap.set(c.x, c);
+          }
+          const result = Array.from(dedupMap.values()).sort(
+            (a, b) => a.x - b.x
+          );
+
+          if (result.length > 0) {
+            const min = result[0].x;
+            const max = result[result.length - 1].x;
+            loadedRangeRef.current = { min, max };
+          }
+
+          return [{ data: result }];
+        });
+
+        // Restore previous viewport after data is extended
+        if (
+          chart &&
+          prevMinVisible !== null &&
+          prevMaxVisible !== null &&
+          !isNaN(prevMinVisible) &&
+          !isNaN(prevMaxVisible)
+        ) {
+          setTimeout(() => {
+            try {
+              chart.updateOptions(
+                {
+                  xaxis: {
+                    min: prevMinVisible,
+                    max: prevMaxVisible,
+                  },
+                },
+                false,
+                false
+              );
+            } catch (e) {
+              // ignore chart update errors
+            }
+          }, 0);
+        }
+      } catch (err) {
+        console.error("❌ Error loading more realtime data:", err);
+      } finally {
+        setIsLoadingMorePast(false);
+      }
+    };
+  }, [API_BASE, mode, symbol, hasMorePast, isLoadingMorePast]);
 
   const options: ApexCharts.ApexOptions = useMemo(() => ({
     chart: {
@@ -398,6 +535,28 @@ export default function CandlestickChart() {
               min: xaxis.min,
               max: xaxis.max,
             };
+          }
+        },
+        scrolled: (chartContext: any, { xaxis }: any) => {
+          // Trigger lazy-load when user scrolls near the left edge of loaded data (realtime mode only)
+          if (mode !== "realtime") return;
+          
+          if (xaxis && xaxis.min !== undefined && loadedRangeRef.current) {
+            const loadedMin = loadedRangeRef.current.min;
+            const visibleMin = xaxis.min;
+            
+            // If user scrolled to within 10% of the left edge, load more
+            const threshold = (xaxis.max - xaxis.min) * 0.1;
+            if (visibleMin <= loadedMin + threshold) {
+              if (!hasMorePast || isLoadingMorePast) return;
+              
+              // Small delay to avoid too frequent calls
+              setTimeout(() => {
+                if (loadMorePastRef.current) {
+                  loadMorePastRef.current();
+                }
+              }, 300);
+            }
           }
         },
       },
@@ -639,30 +798,66 @@ export default function CandlestickChart() {
             </div>
           </Space>
 
-          <Space size={12}>
-            <Button
-              type={mode === "history" ? "primary" : "default"}
-              onClick={() => setMode("history")}
-              size="middle"
-              style={{
-                minWidth: 130,
-                backgroundColor: "#1e2329",
-                borderColor: mode === "history" ? "#0ecb81" : "#2b3139",
-              }}
-            >
-              Historical (5m)
-            </Button>
+          <Space size={8}>
             <Button
               type={mode === "realtime" ? "primary" : "default"}
               onClick={() => setMode("realtime")}
               size="middle"
               style={{
-                minWidth: 110,
+                minWidth: 90,
                 backgroundColor: "#1e2329",
                 borderColor: mode === "realtime" ? "#0ecb81" : "#2b3139",
               }}
             >
-              Real-Time
+              Realtime
+            </Button>
+            <Button
+              type={mode === "7day" ? "primary" : "default"}
+              onClick={() => setMode("7day")}
+              size="middle"
+              style={{
+                minWidth: 70,
+                backgroundColor: "#1e2329",
+                borderColor: mode === "7day" ? "#0ecb81" : "#2b3139",
+              }}
+            >
+              7 Day
+            </Button>
+            <Button
+              type={mode === "30day" ? "primary" : "default"}
+              onClick={() => setMode("30day")}
+              size="middle"
+              style={{
+                minWidth: 70,
+                backgroundColor: "#1e2329",
+                borderColor: mode === "30day" ? "#0ecb81" : "#2b3139",
+              }}
+            >
+              30 Day
+            </Button>
+            <Button
+              type={mode === "6month" ? "primary" : "default"}
+              onClick={() => setMode("6month")}
+              size="middle"
+              style={{
+                minWidth: 80,
+                backgroundColor: "#1e2329",
+                borderColor: mode === "6month" ? "#0ecb81" : "#2b3139",
+              }}
+            >
+              6 Month
+            </Button>
+            <Button
+              type={mode === "1year" ? "primary" : "default"}
+              onClick={() => setMode("1year")}
+              size="middle"
+              style={{
+                minWidth: 70,
+                backgroundColor: "#1e2329",
+                borderColor: mode === "1year" ? "#0ecb81" : "#2b3139",
+              }}
+            >
+              1 Year
             </Button>
           </Space>
         </div>
@@ -677,7 +872,7 @@ export default function CandlestickChart() {
             padding: 16,
           }}
         >
-          {mode === "history" && isLoading ? (
+          {mode !== "realtime" && isLoading ? (
             <div
               style={{
                 height: 650,
