@@ -1,0 +1,24 @@
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airflow-spark-operator
+  namespace: crypto-infra
+rules:
+  - apiGroups: ["spark.apache.org"]
+    resources: ["sparkapplications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-spark-operator-binding
+  namespace: crypto-infra
+subjects:
+  - kind: ServiceAccount
+    name: airflow-worker
+    namespace: crypto-infra
+roleRef:
+  kind: Role
+  name: airflow-spark-operator
+  apiGroup: rbac.authorization.k8s.io

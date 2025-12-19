@@ -9,11 +9,12 @@ class Settings(BaseSettings):
     kafka_bootstrap: str = "192.168.49.2:30995"
     kafka_topic: str = "crypto_kline_1m"
 
-    redis_host: str = "localhost"
-    redis_port: int = 6379
+    redis_host: str = "192.168.49.2"
+    redis_port: int = 31001
     redis_db: int = 0
+    redis_password: str = "123456"
 
-    mongo_uri: str = "mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net"
+    mongo_uri: str = "mongodb://root:8WcVPD9QHx@192.168.49.2:30376/"
     mongo_db: str = "CRYPTO"
     mongo_collection_ohlc: str = "5m_kline"
 
@@ -40,7 +41,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
-        extra = "ignore"  # Bỏ qua các biến môi trường không được định nghĩa
+        extra = "ignore"
 
 
 @lru_cache

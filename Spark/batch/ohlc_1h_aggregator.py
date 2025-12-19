@@ -9,9 +9,10 @@ from datetime import datetime, timedelta, timezone
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, first, last, max as spark_max, min as spark_min, sum as spark_sum
 from pymongo import MongoClient
+from pymongo.errors import OperationFailure
 
-# Environment variables
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net")
+# Environment variables (local MongoDB)
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@192.168.49.2:30376/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
 SOURCE_COLLECTION = "5m_kline"
 TARGET_COLLECTION = "1h_kline"
@@ -37,12 +38,37 @@ def main():
     source_collection = mongo_db[SOURCE_COLLECTION]
     target_collection = mongo_db[TARGET_COLLECTION]
     
-    # Create index
-    target_collection.create_index([
-        ("symbol", 1),
-        ("interval", 1),
-        ("openTime", 1)
-    ], unique=True)
+    # Create index (handle case where index already exists)
+    index_fields = [("symbol", 1), ("interval", 1), ("openTime", 1)]
+    existing_indexes = target_collection.list_indexes()
+    index_exists = False
+    
+    for idx in existing_indexes:
+        idx_key = idx.get("key", {})
+        if (
+            idx_key.get("symbol") == 1 and
+            idx_key.get("interval") == 1 and
+            idx_key.get("openTime") == 1
+        ):
+            index_exists = True
+            print(f"  ℹ️  1h index already exists: {idx.get('name', 'unnamed')}")
+            break
+    
+    if not index_exists:
+        try:
+            target_collection.create_index(
+                index_fields,
+                unique=True,
+                name="symbol_interval_openTime_unique"
+            )
+            print("  ✅ 1h index created successfully")
+        except OperationFailure as e:
+            if e.code == 85:
+                print("  ℹ️  1h index already exists with different name, skipping creation")
+            else:
+                print(f"  ⚠️  MongoDB 1h index creation error (code {e.code}): {e}")
+        except Exception as e:
+            print(f"  ⚠️  Unexpected error creating 1h index: {e}")
     
     # Calculate time window (last complete hour)
     now = datetime.now(timezone.utc)
