@@ -153,6 +153,7 @@ def main():
             total_skipped += 1
             continue
         
+        #save to mongodb [vah]
         mongo_doc = {
             "symbol": row["symbol"],
             "interval": "1d",

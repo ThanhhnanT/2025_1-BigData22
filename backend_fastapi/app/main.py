@@ -74,7 +74,7 @@ async def health():
 async def list_symbols():
     return {"symbols": settings.symbols}
 
-
+# get from mongodb
 @app.get("/ohlc", response_model=OHLCResponse)
 async def get_ohlc(
     symbol: str = Query("BTCUSDT", description="Trading pair, e.g. BTCUSDT"),
