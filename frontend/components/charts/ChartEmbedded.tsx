@@ -4,8 +4,16 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import axios from "axios";
 import { Spin, Typography } from "antd";
+import type { ApexOptions } from "apexcharts";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
+
+type ApexAxisChartSeries = {
+  name?: string;
+  type?: string;
+  color?: string;
+  data: Array<{ x: number; y: number | number[] | null }>;
+}[];
 
 interface CandleData {
   x: number;
@@ -13,26 +21,97 @@ interface CandleData {
   volume?: number;
 }
 
-interface BackendCandle {
-  symbol: string;
-  interval: string;
-  openTime: number;
-  closeTime: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  quoteVolume?: number;
-  trades?: number;
-  x: boolean;
+// Helper functions for calculating technical indicators
+function calculateSMA(data: CandleData[], period: number): Array<{ x: number; y: number | null }> {
+  const result: Array<{ x: number; y: number | null }> = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push({ x: data[i].x, y: null });
+    } else {
+      let sum = 0;
+      for (let j = 0; j < period; j++) {
+        sum += data[i - j].y[3]; // Close price
+      }
+      result.push({ x: data[i].x, y: sum / period });
+    }
+  }
+  return result;
 }
 
-interface BackendMessage {
-  type: "initial" | "latest" | "update" | "realtime";
-  candles?: BackendCandle[];
-  candle?: BackendCandle;
+function calculateEMA(data: CandleData[], period: number): Array<{ x: number; y: number | null }> {
+  const result: Array<{ x: number; y: number | null }> = [];
+  const multiplier = 2 / (period + 1);
+  
+  // Start with SMA for first value
+  let ema = 0;
+  for (let i = 0; i < period && i < data.length; i++) {
+    ema += data[i].y[3];
+  }
+  ema = ema / Math.min(period, data.length);
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push({ x: data[i].x, y: null });
+    } else if (i === period - 1) {
+      result.push({ x: data[i].x, y: ema });
+    } else {
+      ema = (data[i].y[3] - ema) * multiplier + ema;
+      result.push({ x: data[i].x, y: ema });
+    }
+  }
+  return result;
 }
+
+function calculateBollingerBands(data: CandleData[], period: number = 20, stdDev: number = 2): {
+  upper: Array<{ x: number; y: number | null }>;
+  middle: Array<{ x: number; y: number | null }>;
+  lower: Array<{ x: number; y: number | null }>;
+} {
+  const middle = calculateSMA(data, period);
+  const upper: Array<{ x: number; y: number | null }> = [];
+  const lower: Array<{ x: number; y: number | null }> = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1 || middle[i].y === null) {
+      upper.push({ x: data[i].x, y: null });
+      lower.push({ x: data[i].x, y: null });
+    } else {
+      let sum = 0;
+      const avg = middle[i].y!;
+      for (let j = 0; j < period; j++) {
+        sum += Math.pow(data[i - j].y[3] - avg, 2);
+      }
+      const std = Math.sqrt(sum / period);
+      upper.push({ x: data[i].x, y: avg + stdDev * std });
+      lower.push({ x: data[i].x, y: avg - stdDev * std });
+    }
+  }
+  
+  return { upper, middle, lower };
+}
+
+// COMMENTED OUT FOR MONGODB ONLY TESTING - Only used in WebSocket code
+// interface BackendCandle {
+//   symbol: string;
+//   interval: string;
+//   openTime: number;
+//   closeTime: number;
+//   open: number;
+//   high: number;
+//   low: number;
+//   close: number;
+//   volume: number;
+//   quoteVolume?: number;
+//   trades?: number;
+//   x: boolean;
+// }
+
+// COMMENTED OUT FOR MONGODB ONLY TESTING - WebSocket message interface not needed
+// interface BackendMessage {
+//   type: "initial" | "latest" | "update" | "realtime";
+//   candles?: BackendCandle[];
+//   candle?: BackendCandle;
+// }
 
 interface ApiResponse {
   symbol: string;
@@ -45,18 +124,37 @@ interface ApiResponse {
   }[];
 }
 
+interface IndicatorConfig {
+  enabled: boolean;
+  color: string;
+  label: string;
+  period?: number;
+}
+
+interface TechnicalIndicatorsConfig {
+  ma7: IndicatorConfig;
+  ma25: IndicatorConfig;
+  ma99: IndicatorConfig;
+  ema12: IndicatorConfig;
+  ema26: IndicatorConfig;
+  ema50: IndicatorConfig;
+  bollinger: IndicatorConfig;
+}
+
 interface ChartEmbeddedProps {
   symbol: string;
   mode: "realtime" | "7day" | "30day" | "6month" | "1year";
+  indicators?: TechnicalIndicatorsConfig;
 }
 
-export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
-  const [series, setSeries] = useState<{ data: CandleData[] }[]>([{ data: [] }]);
+export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbeddedProps) {
+  const [candleData, setCandleData] = useState<CandleData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMorePast, setIsLoadingMorePast] = useState(false);
   const [hasMorePast, setHasMorePast] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chartRef = useRef<any>(null);
   const zoomRangeRef = useRef<{ min: number; max: number } | null>(null);
   const currentSymbolRef = useRef<string>(symbol);
@@ -64,23 +162,23 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
   const loadedRangeRef = useRef<{ min: number; max: number } | null>(null);
   const loadMorePastRef = useRef<(() => void | Promise<void>) | null>(null);
   const lastLoadMoreTimeRef = useRef<number>(0);
-  // Share same API/WS base strategy as TradingDashboard
+  // Share same API/WS base strategy as TradingDashboard - MongoDB only mode
   const API_BASE =
     process.env.NEXT_PUBLIC_API_BASE ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "http://crypto.local/api";
-  const WS_BASE = API_BASE.replace(/^http/, "ws");
+    "http://localhost:8000";  // Changed for local MongoDB testing
+  // const WS_BASE = API_BASE.replace(/^http/, "ws"); // COMMENTED OUT - WebSocket not used in MongoDB-only mode
 
   useEffect(() => {
     let isMounted = true;
-    let connectTimeout: NodeJS.Timeout | null = null;
+    const connectTimeout: NodeJS.Timeout | null = null;
     let connectDelay: NodeJS.Timeout | null = null;
     
     // Mark that we're changing symbol to prevent reconnections
     isChangingSymbolRef.current = true;
 
     // Reset lazy-load state when symbol or mode changes
-    setSeries([{ data: [] }]);
+    setCandleData([]);
     setHasMorePast(true);
     setIsLoadingMorePast(false);
     loadedRangeRef.current = null;
@@ -93,7 +191,7 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
       wsRef.current.onopen = null;
       try {
         wsRef.current.close();
-      } catch (e) {
+      } catch {
         // Ignore errors
       }
       wsRef.current = null;
@@ -116,8 +214,9 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
     async function fetchHistoricalData() {
       try {
         setIsLoading(true);
-        // Map mode to collection name
+        // Map mode to collection name - MongoDB only mode includes realtime
         const collectionMap: Record<string, string> = {
+          "realtime": "5m_kline",  // Use 5m data for realtime in MongoDB-only mode
           "7day": "5m_kline",
           "30day": "1h_kline",
           "6month": "4h_kline",
@@ -127,7 +226,7 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
         
         if (!collection) {
           console.error("Invalid mode for historical data:", mode);
-          if (isMounted) setSeries([{ data: [] }]);
+          if (isMounted) setCandleData([]);
           return;
         }
 
@@ -143,7 +242,7 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
           volume: d.volume,
         }));
 
-        setSeries([{ data: formatted }]);
+        setCandleData(formatted);
 
         // Initialize loaded range for lazy-loading
         if (formatted.length > 0) {
@@ -157,13 +256,14 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
         }
       } catch (err) {
         console.error("❌ Error fetching historical data:", err);
-        if (isMounted) setSeries([{ data: [] }]);
+        if (isMounted) setCandleData([]);
       } finally {
         if (isMounted) setIsLoading(false);
       }
     }
 
-    function connectWebSocket() {
+    // COMMENTED OUT FOR MONGODB ONLY TESTING - WebSocket requires Redis/Kafka
+    /* function connectWebSocket() {
       // Don't connect if we're changing symbol
       if (isChangingSymbolRef.current) {
         return;
@@ -302,33 +402,35 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
       ws.onerror = (err) => {
         console.error("Chart WebSocket error:", err);
       };
-    }
+    } */
 
-    if (mode === "realtime") {
-      // Small delay to ensure cleanup is complete before connecting
-      connectTimeout = setTimeout(() => {
-        if (isMounted && !isChangingSymbolRef.current) {
-          connectWebSocket();
-        }
-      }, 150);
-    } else {
-      // For historical modes (7day, 30day, 6month, 1year), fetch from MongoDB
+    // COMMENTED OUT FOR MONGODB ONLY TESTING - Realtime mode requires WebSocket/Redis/Kafka
+    // if (mode === "realtime") {
+    //   // Small delay to ensure cleanup is complete before connecting
+    //   connectTimeout = setTimeout(() => {
+    //     if (isMounted && !isChangingSymbolRef.current) {
+    //       connectWebSocket();
+    //     }
+    //   }, 150);
+    // } else {
+      // For all modes (including realtime), fetch from MongoDB in MongoDB-only mode
       fetchHistoricalData();
 
       // Safely close any existing WebSocket connection without touching event handlers.
       // Cast to `any` here to avoid over‑narrowing issues with the ref type in strict mode,
       // since this is just best‑effort cleanup.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ws: any = wsRef.current;
       if (ws) {
         try {
           ws.close();
-        } catch (e) {
+        } catch {
           // Ignore errors
         } finally {
           wsRef.current = null;
         }
       }
-    }
+    // }
 
     return () => {
       isMounted = false;
@@ -348,7 +450,7 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
         wsRef.current.onopen = null;
         try {
           wsRef.current.close();
-        } catch (e) {
+        } catch {
           // Ignore errors
         }
         wsRef.current = null;
@@ -358,12 +460,13 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
         reconnectTimer.current = null;
       }
     };
-  }, [mode, symbol, API_BASE, WS_BASE]);
+  }, [mode, symbol, API_BASE]);
 
   // Lazy-load more historical candles when user scrolls/pans near the left edge
   useEffect(() => {
     loadMorePastRef.current = async () => {
-      if (mode === "realtime") return;
+      // MongoDB-only mode: all modes use historical data
+      // if (mode === "realtime") return;  // COMMENTED OUT - realtime now uses MongoDB
 
       const loadedRange = loadedRangeRef.current;
       if (!loadedRange) return;
@@ -377,6 +480,7 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
       lastLoadMoreTimeRef.current = now;
 
       const collectionMap: Record<string, string> = {
+        "realtime": "5m_kline",  // Use 5m data for realtime in MongoDB-only mode
         "7day": "5m_kline",
         "30day": "1h_kline",
         "6month": "4h_kline",
@@ -416,8 +520,8 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
         const prevMaxVisible =
           chart?.w?.globals?.maxX !== undefined ? chart.w.globals.maxX : null;
 
-        setSeries((prev) => {
-          const existing = prev[0]?.data || [];
+        setCandleData((prev) => {
+          const existing = prev || [];
           const merged = [...newData, ...existing];
 
           // Deduplicate by x (openTime)
@@ -435,7 +539,7 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
             loadedRangeRef.current = { min, max };
           }
 
-          return [{ data: result }];
+          return result;
         });
 
         // Restore previous viewport after data is extended
@@ -458,7 +562,7 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
                 false,
                 false
               );
-            } catch (e) {
+            } catch {
               // ignore chart update errors
             }
           }, 0);
@@ -471,13 +575,126 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
     };
   }, [API_BASE, mode, symbol, hasMorePast, isLoadingMorePast]);
 
-  const options: ApexCharts.ApexOptions = useMemo(() => ({
+  // Calculate series with indicators
+  const series = useMemo(() => {
+    // Always return at least a candlestick series (even if empty) to avoid ApexCharts errors
+    const emptyCandleSeries: ApexAxisChartSeries = [{
+      name: "Candles",
+      type: "candlestick",
+      data: [],
+    }];
+
+    if (!candleData || candleData.length === 0) {
+      return emptyCandleSeries;
+    }
+
+    const result: ApexAxisChartSeries = [
+      {
+        name: "Candles",
+        type: "candlestick",
+        data: candleData,
+      },
+    ];
+
+    if (!indicators) {
+      return result;
+    }
+
+    // Add Moving Averages
+    if (indicators.ma7?.enabled) {
+      result.push({
+        name: indicators.ma7.label,
+        type: "line",
+        data: calculateSMA(candleData, indicators.ma7.period || 7),
+        color: indicators.ma7.color,
+      });
+    }
+    if (indicators.ma25?.enabled) {
+      result.push({
+        name: indicators.ma25.label,
+        type: "line",
+        data: calculateSMA(candleData, indicators.ma25.period || 25),
+        color: indicators.ma25.color,
+      });
+    }
+    if (indicators.ma99?.enabled) {
+      result.push({
+        name: indicators.ma99.label,
+        type: "line",
+        data: calculateSMA(candleData, indicators.ma99.period || 99),
+        color: indicators.ma99.color,
+      });
+    }
+
+    // Add Exponential Moving Averages
+    if (indicators.ema12?.enabled) {
+      result.push({
+        name: indicators.ema12.label,
+        type: "line",
+        data: calculateEMA(candleData, indicators.ema12.period || 12),
+        color: indicators.ema12.color,
+      });
+    }
+    if (indicators.ema26?.enabled) {
+      result.push({
+        name: indicators.ema26.label,
+        type: "line",
+        data: calculateEMA(candleData, indicators.ema26.period || 26),
+        color: indicators.ema26.color,
+      });
+    }
+    if (indicators.ema50?.enabled) {
+      result.push({
+        name: indicators.ema50.label,
+        type: "line",
+        data: calculateEMA(candleData, indicators.ema50.period || 50),
+        color: indicators.ema50.color,
+      });
+    }
+
+    // Add Bollinger Bands
+    if (indicators.bollinger?.enabled) {
+      const bb = calculateBollingerBands(candleData, indicators.bollinger.period || 20);
+      result.push({
+        name: "BB Upper",
+        type: "line",
+        data: bb.upper,
+        color: indicators.bollinger.color,
+      });
+      result.push({
+        name: "BB Middle",
+        type: "line",
+        data: bb.middle,
+        color: indicators.bollinger.color,
+      });
+      result.push({
+        name: "BB Lower",
+        type: "line",
+        data: bb.lower,
+        color: indicators.bollinger.color,
+      });
+    }
+
+    return result;
+  }, [candleData, indicators]);
+
+  // Calculate dynamic stroke widths based on series types
+  const strokeWidths = useMemo(() => {
+    // Generate stroke width array: 1 for candlestick, 2 for line indicators
+    if (!series || series.length === 0) return [1];
+    return series.map((s) => {
+      if (s.type === 'candlestick') return 1;
+      return 2; // Line indicators
+    });
+  }, [series]);
+
+  const options: ApexOptions = useMemo(() => ({
     chart: {
       type: "candlestick",
       height: "100%",
       background: "transparent",
       animations: { 
-        enabled: mode === "realtime",
+        enabled: false,  // Disabled for MongoDB-only mode (no real-time updates)
         speed: 800,
         animateGradually: {
           enabled: true,
@@ -508,12 +725,15 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
         offsetY: 0,
       },
       events: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         mounted: (chartContext: any) => {
           chartRef.current = chartContext;
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         updated: (chartContext: any) => {
           chartRef.current = chartContext;
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         zoomed: (chartContext: any, { xaxis }: any) => {
           if (xaxis && xaxis.min && xaxis.max) {
             zoomRangeRef.current = {
@@ -522,12 +742,14 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
             };
           }
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         scrolled: (chartContext: any, { xaxis }: any) => {
           // Trigger lazy-load when user scrolls near the left edge of loaded data
           if (!xaxis || typeof xaxis.min !== "number" || typeof xaxis.max !== "number") {
             return;
           }
-          if (mode === "realtime") return;
+          // MongoDB-only mode: all modes use historical data
+          // if (mode === "realtime") return;  // COMMENTED OUT - realtime now uses MongoDB
 
           const loadedRange = loadedRangeRef.current;
           if (!loadedRange) return;
@@ -546,6 +768,10 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
         },
       },
       fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+    },
+    stroke: {
+      width: strokeWidths,
+      curve: 'smooth',
     },
     plotOptions: {
       candlestick: {
@@ -596,24 +822,41 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
         color: 'rgba(55, 65, 81, 0.3)',
       },
     },
-    yaxis: {
-      position: "right",
+    yaxis: series.length > 0 ? series.map((s, index) => {
+      // Y-axis for candlestick and all indicators (they share the same price axis)
+      return {
+        seriesName: s.name,
+        show: index === 0, // Only show the first y-axis (Candles)
+        position: "right" as const,
+        labels: {
+          style: {
+            colors: '#9ca3af',
+            fontSize: '12px',
+            fontFamily: 'Inter, system-ui, sans-serif',
+          },
+          formatter: (value: number) => {
+            if (value === null || value === undefined) return '';
+            return value.toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            });
+          },
+        },
+        tooltip: { enabled: index === 0 },
+        forceNiceScale: true,
+      };
+    }) : [{
+      show: true,
+      position: "right" as const,
       labels: {
         style: {
           colors: '#9ca3af',
           fontSize: '12px',
           fontFamily: 'Inter, system-ui, sans-serif',
         },
-        formatter: (value: number) => {
-          return value.toLocaleString('en-US', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          });
-        },
       },
-      tooltip: { enabled: true },
       forceNiceScale: true,
-    },
+    }],
     tooltip: {
       theme: 'dark',
       shared: true,
@@ -628,9 +871,27 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
     },
     dataLabels: { enabled: false },
     legend: {
-      show: false,
+      show: true,
+      showForSingleSeries: false,
+      position: 'top',
+      horizontalAlign: 'left',
+      floating: true,
+      offsetY: 0,
+      labels: {
+        colors: '#9ca3af',
+      },
+      markers: {
+        size: 6,
+        offsetX: 0,
+        offsetY: 0,
+      },
+      itemMargin: {
+        horizontal: 8,
+        vertical: 4,
+      },
     },
-  }), [mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [mode, hasMorePast, isLoadingMorePast, strokeWidths, series]);
 
   if (isLoading && mode !== "realtime") {
     return (
@@ -647,7 +908,7 @@ export default function ChartEmbedded({ symbol, mode }: ChartEmbeddedProps) {
     );
   }
 
-  if (series[0]?.data?.length === 0) {
+  if (candleData.length === 0) {
     return (
       <div
         style={{

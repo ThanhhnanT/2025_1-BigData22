@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     redis_db: int = 0
     redis_password: str = "123456"
 
-    mongo_uri: str = "mongodb://root:8WcVPD9QHx@192.168.49.2:30376/"
+    mongo_uri: str = "mongodb://localhost:27017"
     mongo_db: str = "CRYPTO"
     mongo_collection_ohlc: str = "5m_kline"
 
