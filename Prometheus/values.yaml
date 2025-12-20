@@ -740,6 +740,7 @@ alertmanager:
     ## Port to expose on each node
     ## Only used if service.type is 'NodePort'
     ##
+    type: NodePort
     nodePort: 30903
     ## List of IP addresses at which the Prometheus server service is available
     ## Ref: https://kubernetes.io/docs/concepts/services-networking/service/#external-ips
@@ -775,10 +776,6 @@ alertmanager:
       clientIP:
         timeoutSeconds: 10800
 
-    ## Service type
-    ##
-    type: ClusterIP
-
   ## Configuration for creating a separate Service for each statefulset Alertmanager replica
   ##
   servicePerReplica:
@@ -807,7 +804,7 @@ alertmanager:
 
     ## Service type
     ##
-    type: ClusterIP
+    type: NodePort
 
   ## Configuration for creating a ServiceMonitor for AlertManager
   ##
@@ -1299,7 +1296,7 @@ grafana:
 
   # Administrator credentials when not using an existing secret (see below)
   adminUser: admin
-  adminPassword: 12345678
+  adminPassword: "12345678"
 
   # Use an existing secret for the admin user.
   admin:
@@ -4115,7 +4112,7 @@ prometheus:
     ## prometheus resource to be created with selectors based on values in the helm deployment,
     ## which will also match the servicemonitors created
     ##
-    serviceMonitorSelectorNilUsesHelmValues: true
+    serviceMonitorSelectorNilUsesHelmValues: false
 
     ## ServiceMonitors to be selected for target discovery.
     ## If {}, select all ServiceMonitors
@@ -4127,6 +4124,7 @@ prometheus:
     #     prometheus: somelabel
 
     ## Namespaces to be selected for ServiceMonitor discovery.
+    ## Empty {} means all namespaces
     ##
     serviceMonitorNamespaceSelector: {}
     ## Example which selects ServiceMonitors in namespaces with label "prometheus" set to "somelabel"
@@ -4346,7 +4344,51 @@ prometheus:
     ## The scrape configuration example below will find master nodes, provided they have the name .*mst.*, relabel the
     ## port to 2379 and allow etcd scraping provided it is running on all Kubernetes master nodes
     ##
-    additionalScrapeConfigs: []
+    additionalScrapeConfigs:
+      # Kafka metrics (if not using ServiceMonitor)
+      - job_name: kafka
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - crypto-infra
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            regex: my-cluster-kafka.*
+            action: keep
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            regex: tcp-prometheus
+            action: keep
+      
+      # Spark Operator metrics (if not using ServiceMonitor)
+      - job_name: spark-operator
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - crypto-infra
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            regex: .*spark-operator.*metrics.*
+            action: keep
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            regex: metrics
+            action: keep
+      
+      # Airflow StatsD metrics (if not using ServiceMonitor)
+      - job_name: airflow-statsd
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - crypto-infra
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            regex: .*airflow.*statsd.*
+            action: keep
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            regex: statsd
+            action: keep
     # - job_name: kube-etcd
     #   kubernetes_sd_configs:
     #     - role: node

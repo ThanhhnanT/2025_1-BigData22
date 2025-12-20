@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-cluster
+  namespace: crypto-infra
+  labels:
+    app: kafka
+    release: crypto-monitoring
+spec:
+  selector:
+    matchLabels:
+      strimzi.io/cluster: my-cluster
+      strimzi.io/kind: Kafka
+  endpoints:
+    - port: tcp-prometheus
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+  namespaceSelector:
+    matchNames:
+      - crypto-infra
+
+
