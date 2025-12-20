@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: spark-operator
+  namespace: crypto-infra
+  labels:
+    app: spark-operator
+    release: crypto-monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spark-operator
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+  namespaceSelector:
+    matchNames:
+      - crypto-infra
+
+

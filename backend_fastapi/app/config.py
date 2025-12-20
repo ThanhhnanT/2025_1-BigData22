@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     redis_db: int = int(os.getenv("REDIS_DB", "0"))
     redis_password: str = os.getenv("REDIS_PASSWORD", "123456")
 
-    mongo_uri: str = os.getenv("MONGO_URI", "mongodb://root:123456@localhost:27017/")
-    mongo_db: str = os.getenv("MONGO_DB", "CRYPTO")
+    mongo_uri: str = "mongodb://localhost:27017"
+    mongo_db: str = "CRYPTO"
     mongo_collection_ohlc: str = "5m_kline"
 
     cors_origins: List[str] = ["*"]
