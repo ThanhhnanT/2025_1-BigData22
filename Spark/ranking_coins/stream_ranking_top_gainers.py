@@ -72,4 +72,4 @@ query = agg_df.writeStream \
     .trigger(processingTime='1 minute') \
     .start()
 
-query.awaitTermination()
+query.awaitTermination() 
