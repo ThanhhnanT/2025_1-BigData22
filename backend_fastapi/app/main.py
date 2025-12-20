@@ -11,7 +11,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from .config import settings
 from .schemas import (
     Candle, LatestKline, OHLCResponse,
-    OrderBookResponse, OrderBookEntry, TradesResponse, Trade
+    OrderBookResponse, OrderBookEntry, TradesResponse, Trade,
+    Prediction, PredictionResponse, PredictionsListResponse,
+    PredictionHistory, PredictionHistoryResponse
 )
 # from .kafka_manager import SharedKafkaManager
 

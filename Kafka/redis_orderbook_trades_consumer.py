@@ -4,18 +4,18 @@ from kafka import KafkaConsumer
 import redis
 from datetime import datetime
 
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "192.168.49.2:30995")
+# Kafka configuration - default to Kubernetes service name, fallback to local NodePort
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092")
 TOPIC_ORDERBOOK = os.getenv("KAFKA_TOPIC_ORDERBOOK", "crypto_orderbook")
 TOPIC_TRADES = os.getenv("KAFKA_TOPIC_TRADES", "crypto_trades")
 CONSUMER_GROUP = os.getenv("CONSUMER_GROUP", "redis_orderbook_trades_group")
 
 #
 # Redis configuration
-# Mặc định trỏ tới Redis trên Minikube (my-redis-master NodePort).
-# Có thể override bằng biến môi trường khi chạy trong cluster.
+# Default to Kubernetes service name, fallback to local NodePort for development
 #
-REDIS_HOST = os.getenv("REDIS_HOST", "192.168.49.2")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 31001))
+REDIS_HOST = os.getenv("REDIS_HOST", "my-redis-master.crypto-infra.svc.cluster.local")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
 
