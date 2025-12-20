@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: binance-orderbook-producer
+  namespace: crypto-infra
+  labels:
+    app: binance-orderbook-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: binance-orderbook-producer
+  template:
+    metadata:
+      labels:
+        app: binance-orderbook-producer
+    spec:
+      containers:
+      - name: binance-orderbook-producer
+        image: crypto-binance:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python3", "binance_orderbook_trades_producer.py"]
+        envFrom:
+        - configMapRef:
+            name: kafka-apps-config
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep '[p]ython3 binance_orderbook_trades_producer.py' || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 30

@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clear-redis
+  namespace: crypto-infra
+spec:
+  template:
+    metadata:
+      labels:
+        app: clear-redis
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: clear-redis
+        image: crypto-binance:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python3", "clear_redis.py"]
+        envFrom:
+        - configMapRef:
+            name: kafka-apps-config
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-orderbook-consumer
+  namespace: crypto-infra
+  labels:
+    app: redis-orderbook-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-orderbook-consumer
+  template:
+    metadata:
+      labels:
+        app: redis-orderbook-consumer
+    spec:
+      containers:
+      - name: redis-orderbook-consumer
+        image: crypto-binance:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python3", "redis_orderbook_trades_consumer.py"]
+        env:
+        - name: CONSUMER_GROUP
+          value: "redis_orderbook_trades_group"
+        envFrom:
+        - configMapRef:
+            name: kafka-apps-config
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep '[p]ython3 redis_orderbook_trades_consumer.py' || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 30
