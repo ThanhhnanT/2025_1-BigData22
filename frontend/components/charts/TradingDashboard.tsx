@@ -8,48 +8,14 @@ import ControlPanel from "./ControlPanel";
 import ChartSection from "./ChartSection";
 import DashboardFooter from "./DashboardFooter";
 import TechnicalIndicatorsModal from "./TechnicalIndicatorsModal";
+import OrderBookTradesSection from "./OrderBookTradesSection";
 import { COLORS } from "@/constants/theme";
 import type { TimeRangeMode, TechnicalIndicatorsConfig } from "@/types/trading";
 import "./TradingDashboard.css";
 
-// import type { ColumnsType } from "antd/es/table"; // COMMENTED OUT FOR MONGODB ONLY TESTING
-
-// COMMENTED OUT FOR MONGODB ONLY TESTING - Only used for Order Book/Trades
-// interface OrderBookEntry {
-//   price: number;
-//   quantity: number;
-//   total: number;
-// }
-
-// interface Trade {
-//   symbol: string;
-//   price: number;
-//   quantity: number;
-//   time: number;
-//   isBuyerMaker: boolean;
-//   tradeId?: number;
-// }
-
-// COMMENTED OUT FOR MONGODB ONLY TESTING - WebSocket interfaces not needed
-// interface OrderBookMessage {
-//   type: "initial" | "update";
-//   symbol: string;
-//   bids: OrderBookEntry[];
-//   asks: OrderBookEntry[];
-//   timestamp?: number;
-// }
-
-// interface TradesMessage {
-//   type: "initial" | "realtime";
-//   symbol: string;
-//   trades?: Trade[];
-//   trade?: Trade;
-// }
-
 /**
  * TradingDashboard Component
  * Main dashboard orchestrating all sub-components
- * Currently in MongoDB-only mode (WebSocket features disabled)
  */
 export default function TradingDashboard() {
 
@@ -72,6 +38,9 @@ export default function TradingDashboard() {
     process.env.NEXT_PUBLIC_API_BASE ||
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:8000";
+
+  // Convert HTTP to WebSocket URL
+  const WS_BASE = API_BASE.replace(/^http/, "ws");
 
   useEffect(() => {
     async function fetchSymbols() {
@@ -118,17 +87,14 @@ export default function TradingDashboard() {
 
         {/* Chart Section */}
         <Row gutter={[24, 24]} style={{ height: "calc(100vh - 250px)", minHeight: "600px" }}>
-          <Col xs={24} lg={24} style={{ height: "100%", display: "flex" }}>
+          <Col xs={24} lg={18} style={{ height: "100%", display: "flex" }}>
             <ChartSection symbol={symbol} mode={mode} indicators={indicators} />
           </Col>
           
-          {/* 
-            ORDER BOOK & TRADES SECTION (DISABLED)
-            Currently commented out for MongoDB-only mode.
-            Requires Redis/Kafka/WebSocket infrastructure.
-            See: OrderBookTradesSection.disabled.tsx for full implementation
-            To re-enable: Uncomment and add as <Col xs={24} lg={6}>
-          */}
+          {/* Order Book & Trades Section */}
+          <Col xs={24} lg={6} style={{ height: "100%", display: "flex" }}>
+            <OrderBookTradesSection symbol={symbol} wsBase={WS_BASE} />
+          </Col>
         </Row>
 
         {/* Footer */}

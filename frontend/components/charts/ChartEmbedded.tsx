@@ -106,12 +106,26 @@ function calculateBollingerBands(data: CandleData[], period: number = 20, stdDev
 //   x: boolean;
 // }
 
-// COMMENTED OUT FOR MONGODB ONLY TESTING - WebSocket message interface not needed
-// interface BackendMessage {
-//   type: "initial" | "latest" | "update" | "realtime";
-//   candles?: BackendCandle[];
-//   candle?: BackendCandle;
-// }
+interface BackendCandle {
+  symbol: string;
+  interval: string;
+  openTime: number;
+  closeTime: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  quoteVolume?: number;
+  trades?: number;
+  x: boolean;
+}
+
+interface BackendMessage {
+  type: "initial" | "latest" | "update" | "realtime";
+  candles?: BackendCandle[];
+  candle?: BackendCandle;
+}
 
 interface ApiResponse {
   symbol: string;
@@ -162,17 +176,17 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
   const loadedRangeRef = useRef<{ min: number; max: number } | null>(null);
   const loadMorePastRef = useRef<(() => void | Promise<void>) | null>(null);
   const lastLoadMoreTimeRef = useRef<number>(0);
-  // Share same API/WS base strategy as TradingDashboard - MongoDB only mode
+  // Share same API/WS base strategy as TradingDashboard
   const API_BASE =
     process.env.NEXT_PUBLIC_API_BASE ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8000";  // Changed for local MongoDB testing
-  // const WS_BASE = API_BASE.replace(/^http/, "ws"); // COMMENTED OUT - WebSocket not used in MongoDB-only mode
+    "http://localhost:8000";
+  const WS_BASE = API_BASE.replace(/^http/, "ws");
 
   useEffect(() => {
     let isMounted = true;
-    const connectTimeout: NodeJS.Timeout | null = null;
     let connectDelay: NodeJS.Timeout | null = null;
+    let wsConnectTimeout: NodeJS.Timeout | null = null;
     
     // Mark that we're changing symbol to prevent reconnections
     isChangingSymbolRef.current = true;
@@ -214,30 +228,39 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
     async function fetchHistoricalData() {
       try {
         setIsLoading(true);
-        // Map mode to collection name - MongoDB only mode includes realtime
-        const collectionMap: Record<string, string> = {
-          "realtime": "5m_kline",  // Use 5m data for realtime in MongoDB-only mode
-          "7day": "5m_kline",
-          "30day": "1h_kline",
-          "6month": "4h_kline",
-          "1year": "1d_kline",
-        };
-        const collection = collectionMap[mode];
         
-        if (!collection) {
-          console.error("Invalid mode for historical data:", mode);
-          if (isMounted) setCandleData([]);
-          return;
-        }
+        let res: { data: ApiResponse };
+        
+        if (mode === "realtime") {
+          // For realtime mode, fetch 1m kline data from Redis
+          res = await axios.get<ApiResponse>(`${API_BASE}/ohlc/realtime`, {
+            params: { symbol: symbol, limit: 200 },
+          });
+        } else {
+          // For other modes, fetch from MongoDB
+          const collectionMap: Record<string, string> = {
+            "7day": "5m_kline",
+            "30day": "1h_kline",
+            "6month": "4h_kline",
+            "1year": "1d_kline",
+          };
+          const collection = collectionMap[mode];
+          
+          if (!collection) {
+            console.error("Invalid mode for historical data:", mode);
+            if (isMounted) setCandleData([]);
+            return;
+          }
 
-        const res = await axios.get<ApiResponse>(`${API_BASE}/ohlc`, {
-          params: { symbol: symbol, collection: collection, limit: 200 },
-        });
+          res = await axios.get<ApiResponse>(`${API_BASE}/ohlc`, {
+            params: { symbol: symbol, collection: collection, limit: 200 },
+          });
+        }
 
         if (!isMounted) return;
 
         const formatted: CandleData[] = (res.data?.candles || []).map((d) => ({
-          x: new Date(d.openTime).getTime(),
+          x: typeof d.openTime === 'number' ? d.openTime : new Date(d.openTime).getTime(),
           y: d.y,
           volume: d.volume,
         }));
@@ -262,8 +285,7 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
       }
     }
 
-    // COMMENTED OUT FOR MONGODB ONLY TESTING - WebSocket requires Redis/Kafka
-    /* function connectWebSocket() {
+    function connectWebSocket() {
       // Don't connect if we're changing symbol
       if (isChangingSymbolRef.current) {
         return;
@@ -321,8 +343,8 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
             volume: candle.volume,
           });
 
-          setSeries((prev) => {
-            const oldData = prev[0]?.data || [];
+          setCandleData((prev) => {
+            const oldData = prev || [];
             let updated = [...oldData];
 
             if (data.type === "initial" && data.candles) {
@@ -357,6 +379,13 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
 
             updated.sort((a, b) => a.x - b.x);
 
+            // Update loaded range for lazy-loading
+            if (updated.length > 0) {
+              const min = updated[0].x;
+              const max = updated[updated.length - 1].x;
+              loadedRangeRef.current = { min, max };
+            }
+
             if (zoomRangeRef.current && chartRef.current) {
               setTimeout(() => {
                 if (chartRef.current && zoomRangeRef.current) {
@@ -369,7 +398,7 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
               }, 50);
             }
 
-            return [{ data: updated }];
+            return updated;
           });
         } catch (err) {
           console.error("Error parsing WebSocket message:", err);
@@ -402,23 +431,21 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
       ws.onerror = (err) => {
         console.error("Chart WebSocket error:", err);
       };
-    } */
+    }
 
-    // COMMENTED OUT FOR MONGODB ONLY TESTING - Realtime mode requires WebSocket/Redis/Kafka
-    // if (mode === "realtime") {
-    //   // Small delay to ensure cleanup is complete before connecting
-    //   connectTimeout = setTimeout(() => {
-    //     if (isMounted && !isChangingSymbolRef.current) {
-    //       connectWebSocket();
-    //     }
-    //   }, 150);
-    // } else {
-      // For all modes (including realtime), fetch from MongoDB in MongoDB-only mode
-      fetchHistoricalData();
-
-      // Safely close any existing WebSocket connection without touching event handlers.
-      // Cast to `any` here to avoid over‑narrowing issues with the ref type in strict mode,
-      // since this is just best‑effort cleanup.
+    // Fetch initial data first
+    fetchHistoricalData();
+    
+    // For realtime mode, also connect WebSocket for live updates
+    if (mode === "realtime") {
+      // Small delay to ensure cleanup is complete before connecting
+      wsConnectTimeout = setTimeout(() => {
+        if (isMounted && !isChangingSymbolRef.current) {
+          connectWebSocket();
+        }
+      }, 150);
+    } else {
+      // For non-realtime modes, close any existing WebSocket connection
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ws: any = wsRef.current;
       if (ws) {
@@ -430,14 +457,14 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
           wsRef.current = null;
         }
       }
-    // }
+    }
 
     return () => {
       isMounted = false;
       isChangingSymbolRef.current = true; // Prevent reconnections during cleanup
       
-      if (connectTimeout) {
-        clearTimeout(connectTimeout);
+      if (wsConnectTimeout) {
+        clearTimeout(wsConnectTimeout);
       }
       if (connectDelay) {
         clearTimeout(connectDelay);
@@ -465,9 +492,6 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
   // Lazy-load more historical candles when user scrolls/pans near the left edge
   useEffect(() => {
     loadMorePastRef.current = async () => {
-      // MongoDB-only mode: all modes use historical data
-      // if (mode === "realtime") return;  // COMMENTED OUT - realtime now uses MongoDB
-
       const loadedRange = loadedRangeRef.current;
       if (!loadedRange) return;
       if (!hasMorePast || isLoadingMorePast) return;
@@ -479,36 +503,54 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
       }
       lastLoadMoreTimeRef.current = now;
 
-      const collectionMap: Record<string, string> = {
-        "realtime": "5m_kline",  // Use 5m data for realtime in MongoDB-only mode
-        "7day": "5m_kline",
-        "30day": "1h_kline",
-        "6month": "4h_kline",
-        "1year": "1d_kline",
-      };
-      const collection = collectionMap[mode];
-      if (!collection) return;
-
       setIsLoadingMorePast(true);
       try {
-        const end = loadedRange.min - 1;
-        const res = await axios.get<ApiResponse>(`${API_BASE}/ohlc`, {
-          params: {
-            symbol,
-            collection,
-            limit: 200,
-            end,
-          },
-        });
+        let res: { data: ApiResponse };
+        
+        if (mode === "realtime") {
+          // For realtime mode, load more from Redis
+          const start = loadedRange.min - 1;
+          res = await axios.get<ApiResponse>(`${API_BASE}/ohlc/realtime`, {
+            params: {
+              symbol,
+              limit: 200,
+              start, // Load candles before this time
+            },
+          });
+        } else {
+          // For other modes, load from MongoDB
+          const collectionMap: Record<string, string> = {
+            "7day": "5m_kline",
+            "30day": "1h_kline",
+            "6month": "4h_kline",
+            "1year": "1d_kline",
+          };
+          const collection = collectionMap[mode];
+          if (!collection) {
+            setIsLoadingMorePast(false);
+            return;
+          }
+          
+          const end = loadedRange.min - 1;
+          res = await axios.get<ApiResponse>(`${API_BASE}/ohlc`, {
+            params: {
+              symbol,
+              collection,
+              limit: 200,
+              end,
+            },
+          });
+        }
 
         const candles = res.data?.candles || [];
         if (candles.length === 0) {
           setHasMorePast(false);
+          setIsLoadingMorePast(false);
           return;
         }
 
         const newData: CandleData[] = candles.map((d) => ({
-          x: new Date(d.openTime).getTime(),
+          x: typeof d.openTime === 'number' ? d.openTime : new Date(d.openTime).getTime(),
           y: d.y,
           volume: d.volume,
         }));

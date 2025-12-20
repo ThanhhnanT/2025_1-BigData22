@@ -3,6 +3,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHART_PATH="${SCRIPT_DIR}/../../Prometheus"
+MONITORING_DIR="${SCRIPT_DIR}/../monitoring"
 NAMESPACE="crypto-monitoring"
 RELEASE_NAME="crypto-monitoring"
 
@@ -183,6 +184,9 @@ echo "     kubectl get pods -n ${NAMESPACE}"
 echo ""
 echo "📋 Check services:"
 echo "     kubectl get svc -n ${NAMESPACE}"
+echo ""
+echo "📊 Apply ServiceMonitors (optional):"
+echo "     cd ${MONITORING_DIR} && ./apply-servicemonitors.sh"
 echo ""
 
 
