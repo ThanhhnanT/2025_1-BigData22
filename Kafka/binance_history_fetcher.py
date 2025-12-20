@@ -27,22 +27,21 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
 
-# Base symbols from producer file (will be converted to full symbols)
 BASE_SYMBOLS = [
     "BTC",   
     "ETH",   
     "BNB",  
-    "SOL",   # Solana
-    "ADA",   # Cardano
-    "XRP",   # Ripple
-    "DOGE",  # Dogecoin
-    "DOT",   # Polkadot
-    "MATIC", # Polygon
-    "AVAX",  # Avalanche
-    "LINK",  # Chainlink
-    "UNI",   # Uniswap
-    "LTC",   # Litecoin
-    "ATOM",  # Cosmos
+    "SOL",   
+    "ADA",   
+    "XRP",   
+    "DOGE",  
+    "DOT",   
+    "MATIC",
+    "AVAX", 
+    "LINK",  
+    "UNI",  
+    "LTC",   
+    "ATOM", 
     "ETC",
 ]
 
@@ -50,10 +49,8 @@ SYMBOLS = [f"{symbol}USDT" for symbol in BASE_SYMBOLS]
 
 INTERVALS = ["1m", "5m", "1h", "4h", "1d"]
 
-# Collection mapping
-# Note: 1m interval is saved to Redis, not MongoDB
 COLLECTION_MAP = {
-    "1m": None,  # Saved to Redis, not MongoDB
+    "1m": None,
     "5m": "5m_kline",
     "1h": "1h_kline",
     "4h": "4h_kline",
@@ -62,11 +59,11 @@ COLLECTION_MAP = {
 
 API_URL = "https://api.binance.com/api/v3/klines"
 LIMIT = 1000 
-RATE_LIMIT_DELAY = 0.1  # 100ms between requests (reduced for speed)
+RATE_LIMIT_DELAY = 0.1  
 MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
-BATCH_SIZE = 1000  # MongoDB bulk write batch size
-MAX_WORKERS = 4  # Number of parallel workers for fetching
+RETRY_DELAY = 2
+BATCH_SIZE = 1000 
+MAX_WORKERS = 4 
 
 
 def sleep(ms: int):
@@ -75,18 +72,7 @@ def sleep(ms: int):
 
 
 def fetch_candles(symbol: str, interval: str, start_time: int, end_time: int) -> List[List]:
-    """
-    Fetch candles from Binance API
-    
-    Args:
-        symbol: Trading pair symbol (e.g., BTCUSDT)
-        interval: Kline interval (5m, 1h, 5h, 1d)
-        start_time: Start timestamp in milliseconds
-        end_time: End timestamp in milliseconds
-    
-    Returns:
-        List of kline data arrays
-    """
+
     url = f"{API_URL}?symbol={symbol}&interval={interval}&limit={LIMIT}&startTime={start_time}&endTime={end_time}"
     
     for attempt in range(MAX_RETRIES):
@@ -96,35 +82,17 @@ def fetch_candles(symbol: str, interval: str, start_time: int, end_time: int) ->
             return response.json()
         except requests.exceptions.RequestException as e:
             if attempt < MAX_RETRIES - 1:
-                print(f"  ⚠️  Request error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+                print(f"   Request error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
                 time.sleep(RETRY_DELAY * (attempt + 1))  # Exponential backoff
             else:
-                print(f"  ❌ Failed after {MAX_RETRIES} attempts: {e}")
+                print(f"  Failed after {MAX_RETRIES} attempts: {e}")
                 raise
     
     return []
 
 
 def parse_candle(kline: List, symbol: str, interval: str) -> Dict:
-    """
-    Parse Binance kline array into MongoDB document
-    
-    Binance kline format:
-    [
-        0: openTime,
-        1: open,
-        2: high,
-        3: low,
-        4: close,
-        5: volume,
-        6: closeTime,
-        7: quoteVolume,
-        8: trades,
-        9: takerBuyBaseVolume,
-        10: takerBuyQuoteVolume,
-        11: ignore
-    ]
-    """
+
     return {
         "symbol": symbol,
         "interval": interval,
@@ -145,12 +113,7 @@ def parse_candle(kline: List, symbol: str, interval: str) -> Dict:
 
 
 def save_to_mongodb(collection, candles: List[Dict], symbol: str, interval: str) -> tuple:
-    """
-    Save candles to MongoDB with bulk upsert (much faster than individual updates)
-    
-    Returns:
-        (inserted_count, skipped_count)
-    """
+
     if not candles:
         return 0, 0
     
@@ -179,7 +142,6 @@ def save_to_mongodb(collection, candles: List[Dict], symbol: str, interval: str)
         skipped = len(candles) - inserted
         
     except Exception as e:
-        # Fallback to individual writes if bulk fails
         print(f"  ⚠️  Bulk write failed, falling back to individual writes: {e}")
         for candle in candles:
             try:
@@ -199,18 +161,13 @@ def save_to_mongodb(collection, candles: List[Dict], symbol: str, interval: str)
             except DuplicateKeyError:
                 skipped += 1
             except Exception as e2:
-                print(f"  ❌ Error saving candle for {symbol} {interval} (openTime: {candle['openTime']}): {e2}")
+                print(f"  Error saving candle for {symbol} {interval} (openTime: {candle['openTime']}): {e2}")
     
     return inserted, skipped
 
 
 def get_latest_timestamp(collection, symbol: str, interval: str) -> Optional[int]:
-    """
-    Get the latest openTime timestamp for a symbol/interval in MongoDB
-    
-    Returns:
-        Latest openTime timestamp in milliseconds, or None if no data exists
-    """
+  
     try:
         latest = collection.find_one(
             {"symbol": symbol, "interval": interval},
@@ -224,35 +181,19 @@ def get_latest_timestamp(collection, symbol: str, interval: str) -> Optional[int
 
 
 def get_latest_timestamp_from_redis(redis_client, symbol: str) -> Optional[int]:
-    """
-    Get the latest openTime timestamp for a symbol from Redis (1m interval)
-    
-    Returns:
-        Latest openTime timestamp in milliseconds, or None if no data exists
-    """
+
     try:
         index_key = f"crypto:{symbol}:1m:index"
-        # Get the highest score (latest timestamp) from sorted set
         timestamps = redis_client.zrange(index_key, -1, -1, withscores=True)
         if timestamps:
-            return int(timestamps[0][1])  # Return the score (timestamp)
+            return int(timestamps[0][1]) 
     except Exception as e:
         print(f"  ⚠️  Error checking Redis data: {e}")
     return None
 
 
 def save_to_redis(redis_client, candles: List[Dict], symbol: str) -> tuple:
-    """
-    Save 1m candles to Redis (same format as redis_consumer.py)
-    
-    Args:
-        redis_client: Redis client instance
-        candles: List of candle dictionaries
-        symbol: Trading pair symbol
-    
-    Returns:
-        (saved_count, skipped_count)
-    """
+ 
     if not candles:
         return 0, 0
     
@@ -264,10 +205,8 @@ def save_to_redis(redis_client, candles: List[Dict], symbol: str) -> tuple:
             open_time = candle["openTime"]
             close_time = candle["closeTime"]
             
-            # Key format: crypto:{symbol}:1m:{openTime}
             key = f"crypto:{symbol}:1m:{open_time}"
             
-            # Format value (same as redis_consumer.py)
             value = {
                 "symbol": symbol,
                 "interval": "1m",
@@ -280,30 +219,27 @@ def save_to_redis(redis_client, candles: List[Dict], symbol: str) -> tuple:
                 "volume": candle["volume"],
                 "quoteVolume": candle["quoteVolume"],
                 "trades": candle["trades"],
-                "x": True,  # Historical data is always closed
+                "x": True,  
                 "updatedAt": datetime.now().isoformat()
             }
             
-            # Save candle with TTL 24h
             redis_client.setex(
                 key,
                 86400,  # 24 hours
                 json.dumps(value)
             )
             
-            # Add to index (sorted set)
             index_key = f"crypto:{symbol}:1m:index"
             redis_client.zadd(index_key, {str(open_time): open_time})
             redis_client.expire(index_key, 86400 * 7)  # 7 days TTL for index
             
-            # Update latest
             latest_key = f"crypto:{symbol}:1m:latest"
             redis_client.setex(latest_key, 86400, json.dumps(value))
             
             saved += 1
         
     except Exception as e:
-        print(f"  ❌ Error saving to Redis: {e}")
+        print(f"  Error saving to Redis: {e}")
         skipped = len(candles)
         saved = 0
     
@@ -311,57 +247,40 @@ def save_to_redis(redis_client, candles: List[Dict], symbol: str) -> tuple:
 
 
 def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_client=None, years_back: int = 1, resume_from_existing: bool = True):
-    """
-    Fetch historical data for a symbol and interval, save to MongoDB or Redis
+
+    print(f"\nFetching {symbol} ({interval})...")
     
-    Args:
-        symbol: Trading pair symbol
-        interval: Kline interval
-        collection: MongoDB collection (None for 1m interval)
-        redis_client: Redis client (required for 1m interval)
-        years_back: Number of years of history to fetch (ignored for 1m, uses 1 day)
-        resume_from_existing: If True, continue from last saved timestamp
-    """
-    print(f"\n📊 Fetching {symbol} ({interval})...")
-    
-    # Special handling for 1m interval: fetch 1 day and save to Redis
     if interval == "1m":
         if not redis_client:
-            print(f"  ❌ Redis client required for 1m interval")
+            print(f"   Redis client required for 1m interval")
             return 0, 0, 0
         
-        # Calculate time range: 1 day back
         now = datetime.now(timezone.utc)
         end_timestamp = int(now.timestamp() * 1000)
         start_date = now - timedelta(days=1)
         start_timestamp = int(start_date.timestamp() * 1000)
         
-        # Check if we have existing data in Redis
         if resume_from_existing:
             latest_timestamp = get_latest_timestamp_from_redis(redis_client, symbol)
             if latest_timestamp and latest_timestamp >= start_timestamp:
                 # Continue from the next candle after the latest one
                 start_timestamp = latest_timestamp + 1
                 start_date = datetime.fromtimestamp(start_timestamp / 1000, tz=timezone.utc)
-                print(f"  ℹ️  Found existing data in Redis up to {datetime.fromtimestamp(latest_timestamp / 1000, tz=timezone.utc).isoformat()}")
-                print(f"  📅 Resuming from: {start_date.isoformat()}")
+                print(f"    Found existing data in Redis up to {datetime.fromtimestamp(latest_timestamp / 1000, tz=timezone.utc).isoformat()}")
+                print(f"  Resuming from: {start_date.isoformat()}")
             else:
-                print(f"  📅 Starting fresh from: {start_date.isoformat()} (1 day back)")
+                print(f"  Starting fresh from: {start_date.isoformat()} (1 day back)")
         else:
-            print(f"  📅 Fetching from: {start_date.isoformat()} (force mode, 1 day back)")
+            print(f"  Fetching from: {start_date.isoformat()} (force mode, 1 day back)")
         
-        # If we're already up to date, skip
         if start_timestamp >= end_timestamp:
-            print(f"  ✅ {symbol} ({interval}) is already up to date!")
+            print(f"   {symbol} ({interval}) is already up to date!")
             return 0, 0, 0
         
-        # Duration for 1m: 1 minute
-        duration = 60 * 1000  # 1 minute in milliseconds
+        duration = 60 * 1000  
         window_size = LIMIT * duration
         
     else:
-        # MongoDB intervals: use years_back
-        # Calculate time range
         now = datetime.now(timezone.utc)
         end_timestamp = int(now.timestamp() * 1000)
         
@@ -383,23 +302,19 @@ def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_cl
             start_timestamp = int(start_date.timestamp() * 1000)
             print(f"  📅 Fetching from: {start_date.isoformat()} (force mode)")
         
-        # If we're already up to date, skip
         if start_timestamp >= end_timestamp:
             print(f"  ✅ {symbol} ({interval}) is already up to date!")
             return 0, 0, 0
-        
-        # Calculate time window based on interval
-        # For pagination, we'll fetch LIMIT candles at a time
-        # Each interval has different duration:
+   
         interval_durations = {
-            "5m": 5 * 60 * 1000,      # 5 minutes in milliseconds
-            "1h": 60 * 60 * 1000,     # 1 hour in milliseconds
-            "5h": 5 * 60 * 60 * 1000, # 5 hours in milliseconds
-            "1d": 24 * 60 * 60 * 1000 # 1 day in milliseconds
+            "5m": 5 * 60 * 1000,     
+            "1h": 60 * 60 * 1000,    
+            "5h": 5 * 60 * 60 * 1000, 
+            "1d": 24 * 60 * 60 * 1000 
         }
         
         duration = interval_durations.get(interval, 60 * 60 * 1000)
-        window_size = LIMIT * duration  # Time window for each request
+        window_size = LIMIT * duration 
     
     current_start = start_timestamp
     current_end = min(current_start + window_size, end_timestamp)
@@ -409,28 +324,25 @@ def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_cl
     total_fetched = 0
     batch_count = 0
     
-    print(f"  📅 Time range: {start_date.isoformat()} to {now.isoformat()}")
-    print(f"  📅 Timestamps: {start_timestamp} to {end_timestamp}")
+    print(f"  Time range: {start_date.isoformat()} to {now.isoformat()}")
+    print(f" Timestamps: {start_timestamp} to {end_timestamp}")
     
-    # Calculate expected number of candles for 1m interval
     if interval == "1m":
         time_range_ms = end_timestamp - start_timestamp
-        expected_candles = time_range_ms / (60 * 1000)  # 1 minute per candle
-        print(f"  📊 Expected candles for 24h: ~{int(expected_candles)} (1 candle per minute)")
+        expected_candles = time_range_ms / (60 * 1000)  
+        print(f"  Expected candles for 24h: ~{int(expected_candles)} (1 candle per minute)")
     
     while current_start < end_timestamp:
         try:
-            # Fetch candles
+          
             klines = fetch_candles(symbol, interval, current_start, current_end)
             
             if len(klines) == 0:
                 print(f"  ℹ️  No more data available for {symbol} ({interval})")
                 break
-            
-            # Parse candles
+       
             candles = [parse_candle(k, symbol, interval) for k in klines]
-            
-            # Save to Redis (1m) or MongoDB (other intervals)
+
             if interval == "1m":
                 saved, skipped = save_to_redis(redis_client, candles, symbol)
                 total_inserted += saved
@@ -443,19 +355,15 @@ def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_cl
             total_fetched += len(candles)
             batch_count += 1
             
-            # Print progress every 10 batches to reduce I/O overhead
             if batch_count % 10 == 0:
                 print(f"  📊 {symbol} ({interval}): {total_fetched:,} candles fetched | Saved: {total_inserted:,}, Skipped: {total_skipped:,}")
             
-            # Move to next window
-            # For 1m interval, use openTime of last candle + 1 minute to ensure no gaps
             if len(klines) > 0:
-                last_open_time = klines[-1][0]  # openTime
+                last_open_time = klines[-1][0]  
                 if interval == "1m":
-                    # For 1m: next candle starts 1 minute after last openTime
+               
                     current_start = last_open_time + duration
                 else:
-                    # For other intervals: use closeTime + 1ms
                     last_close_time = klines[-1][6]
                     current_start = last_close_time + 1
             else:
@@ -467,24 +375,22 @@ def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_cl
             sleep(RATE_LIMIT_DELAY * 1000)
             
         except Exception as e:
-            print(f"  ❌ Error fetching {symbol} {interval}: {e}")
-            print(f"  ⏳ Retrying in {RETRY_DELAY} seconds...")
+            print(f"  Error fetching {symbol} {interval}: {e}")
+            print(f"  Retrying in {RETRY_DELAY} seconds...")
             time.sleep(RETRY_DELAY)
-            # Advance to next window to avoid infinite loop
             current_start = current_end + 1
             current_end = min(current_start + window_size, end_timestamp)
     
-    # Final validation for 1m interval
     if interval == "1m":
         time_range_ms = end_timestamp - start_timestamp
         expected_candles = time_range_ms / (60 * 1000)
         if total_fetched < expected_candles * 0.9:  # Allow 10% tolerance
-            print(f"  ⚠️  Warning: Expected ~{int(expected_candles)} candles but only fetched {total_fetched}")
-            print(f"  ⚠️  Missing ~{int(expected_candles - total_fetched)} candles")
+            print(f" Warning: Expected ~{int(expected_candles)} candles but only fetched {total_fetched}")
+            print(f" Missing ~{int(expected_candles - total_fetched)} candles")
         else:
-            print(f"  ✅ Fetched {total_fetched} candles (expected ~{int(expected_candles)})")
+            print(f" Fetched {total_fetched} candles (expected ~{int(expected_candles)})")
     
-    print(f"  ✅ Completed {symbol} ({interval}): Fetched {total_fetched}, Inserted {total_inserted}, Skipped {total_skipped}")
+    print(f" Completed {symbol} ({interval}): Fetched {total_fetched}, Inserted {total_inserted}, Skipped {total_skipped}")
     return total_inserted, total_skipped, total_fetched
 
 
