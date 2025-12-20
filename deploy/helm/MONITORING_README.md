@@ -55,7 +55,7 @@ Script này sẽ:
 Sau khi monitoring stack đã được triển khai, áp dụng các ServiceMonitor resources:
 
 ```bash
-cd deploy/k8s_web
+cd deploy/k8s_web/monitoring
 ./apply-servicemonitors.sh
 ```
 
@@ -134,7 +134,7 @@ monitoring:
 
 ### ServiceMonitors
 
-Các ServiceMonitor resources được đặt trong `deploy/k8s_web/`:
+Các ServiceMonitor resources được đặt trong `deploy/k8s_web/monitoring/`:
 
 - `backend-servicemonitor.yaml`: Backend FastAPI metrics
 - `kafka-servicemonitor.yaml`: Kafka cluster metrics
@@ -224,7 +224,7 @@ kubectl logs -l app.kubernetes.io/name=prometheus -n crypto-monitoring
 
 4. **Áp dụng ServiceMonitor:**
    ```bash
-   kubectl apply -f deploy/k8s_web/backend-servicemonitor.yaml
+   kubectl apply -f deploy/k8s_web/monitoring/backend-servicemonitor.yaml
    ```
 
 ## Tích hợp với Kafka (Strimzi)
@@ -247,7 +247,7 @@ Strimzi Kafka tự động expose metrics qua JMX Prometheus Exporter. Để b�
 
 3. **Áp dụng ServiceMonitor:**
    ```bash
-   kubectl apply -f deploy/k8s_web/kafka-servicemonitor.yaml
+   kubectl apply -f deploy/k8s_web/monitoring/kafka-servicemonitor.yaml
    ```
 
 ## Dashboard mẫu

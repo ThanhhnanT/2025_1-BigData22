@@ -1,18 +1,10 @@
 /**
- * OrderBookTradesSection Component (DISABLED)
+ * OrderBookTradesSection Component
  * 
  * This component contains the Order Book and Market Trades functionality
  * that requires Redis/Kafka/WebSocket infrastructure.
- * 
- * Currently commented out for MongoDB-only mode.
- * To re-enable:
- * 1. Ensure Redis and Kafka services are running
- * 2. Uncomment the WebSocket management code
- * 3. Import this component in TradingDashboard
- * 4. Add state management for order book and trades data
  */
 
-/*
 import { useState, useEffect, useRef } from "react";
 import { Table, Button, Space, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -28,7 +20,7 @@ interface OrderBookTradesSectionProps {
 
 export default function OrderBookTradesSection({ symbol, wsBase }: OrderBookTradesSectionProps) {
   // ============================================================================
-  // STATE - Order Book & Trades (Disabled for MongoDB-only mode)
+  // STATE - Order Book & Trades
   // ============================================================================
   const [bids, setBids] = useState<OrderBookEntry[]>([]);
   const [asks, setAsks] = useState<OrderBookEntry[]>([]);
@@ -175,7 +167,7 @@ export default function OrderBookTradesSection({ symbol, wsBase }: OrderBookTrad
   // ============================================================================
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', height: '100%' }}>
-      // Order Book Section
+      {/* Order Book Section */}
       <section style={{
         backgroundColor: COLORS.background.secondary,
         borderRadius: BORDER_RADIUS.lg,
@@ -232,9 +224,9 @@ export default function OrderBookTradesSection({ symbol, wsBase }: OrderBookTrad
           </Space>
         </div>
 
-        // Order Book Tables (Asks, Current Price, Bids)
+        {/* Order Book Tables (Asks, Current Price, Bids) */}
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          // Asks Table
+          {/* Asks Table */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {asksData.length > 0 ? (
               <Table
@@ -259,7 +251,7 @@ export default function OrderBookTradesSection({ symbol, wsBase }: OrderBookTrad
             )}
           </div>
 
-          // Current Price Display
+          {/* Current Price Display */}
           <div style={{
             position: 'sticky',
             top: 0,
@@ -293,7 +285,7 @@ export default function OrderBookTradesSection({ symbol, wsBase }: OrderBookTrad
             </span>
           </div>
 
-          // Bids Table
+          {/* Bids Table */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {bidsData.length > 0 ? (
               <Table
@@ -320,7 +312,7 @@ export default function OrderBookTradesSection({ symbol, wsBase }: OrderBookTrad
         </div>
       </section>
 
-      // Market Trades Section
+      {/* Market Trades Section */}
       <section style={{
         backgroundColor: COLORS.background.secondary,
         borderRadius: BORDER_RADIUS.lg,
@@ -357,10 +349,4 @@ export default function OrderBookTradesSection({ symbol, wsBase }: OrderBookTrad
       </section>
     </div>
   );
-}
-*/
-
-// Export placeholder for future use
-export default function OrderBookTradesSection() {
-  return null;
 }

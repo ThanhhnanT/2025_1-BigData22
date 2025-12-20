@@ -62,4 +62,3 @@ echo "   kubectl port-forward svc/crypto-monitoring-kube-prometheus-prometheus 9
 echo "   Then open: http://localhost:9090/targets"
 echo ""
 
-

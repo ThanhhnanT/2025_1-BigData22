@@ -16,7 +16,7 @@ Chờ khoảng 2-5 phút để tất cả pods khởi động.
 ## Bước 2: Áp dụng ServiceMonitors
 
 ```bash
-cd ../k8s_web
+cd ../k8s_web/monitoring
 ./apply-servicemonitors.sh
 ```
 
@@ -57,7 +57,7 @@ cd deploy/helm
 - `deploy-monitoring.sh`: Triển khai monitoring stack
 - `access-monitoring.sh`: Xem thông tin truy cập
 - `verify-monitoring.sh`: Kiểm tra trạng thái
-- `apply-servicemonitors.sh`: Áp dụng ServiceMonitors (trong `deploy/k8s_web/`)
+- `apply-servicemonitors.sh`: Áp dụng ServiceMonitors (trong `deploy/k8s_web/monitoring/`)
 
 ## Xem thêm
 

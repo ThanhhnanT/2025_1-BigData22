@@ -9,17 +9,17 @@ from pymongo.errors import DuplicateKeyError
 from pymongo.operations import UpdateOne
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-# import redis
+import redis
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@my-mongo-mongodb.crypto-infra.svc.cluster.local:27017/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
 YEARS_BACK = int(os.getenv("YEARS_BACK", "1"))
 RESUME_FROM_EXISTING = os.getenv("RESUME_FROM_EXISTING", "true").lower() == "true" 
 
-# REDIS_HOST = os.getenv("REDIS_HOST", "192.168.49.2")
-# REDIS_PORT = int(os.getenv("REDIS_PORT", 31001))
-# REDIS_DB = int(os.getenv("REDIS_DB", 0))
-# REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
+REDIS_HOST = os.getenv("REDIS_HOST", "my-redis-master.crypto-infra.svc.cluster.local")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
 
 BASE_SYMBOLS = [
     "BTC",   
@@ -43,8 +43,8 @@ SYMBOLS = [f"{symbol}USDT" for symbol in BASE_SYMBOLS]
 
 # Intervals to fetch
 # Note: Binance does not support 5h interval, use 4h instead
-# 1m interval will be saved to Redis (1 day of data) - COMMENTED OUT FOR MONGODB ONLY TESTING
-INTERVALS = ["5m", "1h", "4h", "1d"]  # "1m" commented out
+# 1m interval will be saved to Redis (1 day of data)
+INTERVALS = ["1m", "5m", "1h", "4h", "1d"]
 
 COLLECTION_MAP = {
     "1m": None,
@@ -177,91 +177,91 @@ def get_latest_timestamp(collection, symbol: str, interval: str) -> Optional[int
     return None
 
 
-# def get_latest_timestamp_from_redis(redis_client, symbol: str) -> Optional[int]:
-#     """
-#     Get the latest openTime timestamp for a symbol from Redis (1m interval)
-#     
-#     Returns:
-#         Latest openTime timestamp in milliseconds, or None if no data exists
-#     """
-#     try:
-#         index_key = f"crypto:{symbol}:1m:index"
-#         # Get the highest score (latest timestamp) from sorted set
-#         timestamps = redis_client.zrange(index_key, -1, -1, withscores=True)
-#         if timestamps:
-#             return int(timestamps[0][1])  # Return the score (timestamp)
-#     except Exception as e:
-#         print(f"  ⚠️  Error checking Redis data: {e}")
-#     return None
+def get_latest_timestamp_from_redis(redis_client, symbol: str) -> Optional[int]:
+    """
+    Get the latest openTime timestamp for a symbol from Redis (1m interval)
+    
+    Returns:
+        Latest openTime timestamp in milliseconds, or None if no data exists
+    """
+    try:
+        index_key = f"crypto:{symbol}:1m:index"
+        # Get the highest score (latest timestamp) from sorted set
+        timestamps = redis_client.zrange(index_key, -1, -1, withscores=True)
+        if timestamps:
+            return int(timestamps[0][1])  # Return the score (timestamp)
+    except Exception as e:
+        print(f"  ⚠️  Error checking Redis data: {e}")
+    return None
 
 
-# def save_to_redis(redis_client, candles: List[Dict], symbol: str) -> tuple:
-#     """
-#     Save 1m candles to Redis (same format as redis_consumer.py)
-#     
-#     Args:
-#         redis_client: Redis client instance
-#         candles: List of candle dictionaries
-#         symbol: Trading pair symbol
-#     
-#     Returns:
-#         (saved_count, skipped_count)
-#     """
-#     if not candles:
-#         return 0, 0
-#     
-#     saved = 0
-#     skipped = 0
-#     
-#     try:
-#         for candle in candles:
-#             open_time = candle["openTime"]
-#             close_time = candle["closeTime"]
-#             
-#             # Key format: crypto:{symbol}:1m:{openTime}
-#             key = f"crypto:{symbol}:1m:{open_time}"
-#             
-#             # Format value (same as redis_consumer.py)
-#             value = {
-#                 "symbol": symbol,
-#                 "interval": "1m",
-#                 "openTime": open_time,
-#                 "closeTime": close_time,
-#                 "open": candle["open"],
-#                 "high": candle["high"],
-#                 "low": candle["low"],
-#                 "close": candle["close"],
-#                 "volume": candle["volume"],
-#                 "quoteVolume": candle["quoteVolume"],
-#                 "trades": candle["trades"],
-#                 "x": True,  # Historical data is always closed
-#                 "updatedAt": datetime.now().isoformat()
-#             }
-#             
-#             # Save candle with TTL 24h
-#             redis_client.setex(
-#                 key,
-#                 86400,  # 24 hours
-#                 json.dumps(value)
-#             )
-#             
-#             # Add to index (sorted set)
-#             index_key = f"crypto:{symbol}:1m:index"
-#             redis_client.zadd(index_key, {str(open_time): open_time})
-#             redis_client.expire(index_key, 86400 * 7)  # 7 days TTL for index
-#             
-#             # Update latest
-#             latest_key = f"crypto:{symbol}:1m:latest"
-#             redis_client.setex(latest_key, 86400, json.dumps(value))
-#             
-#             saved += 1
-#         
-#     except Exception as e:
-#         print(f"  ❌ Error saving to Redis: {e}")
-#         skipped = len(candles)
-#         saved = 0
-#     
-#     return saved, skipped
+def save_to_redis(redis_client, candles: List[Dict], symbol: str) -> tuple:
+    """
+    Save 1m candles to Redis (same format as redis_consumer.py)
+    
+    Args:
+        redis_client: Redis client instance
+        candles: List of candle dictionaries
+        symbol: Trading pair symbol
+    
+    Returns:
+        (saved_count, skipped_count)
+    """
+    if not candles:
+        return 0, 0
+    
+    saved = 0
+    skipped = 0
+    
+    try:
+        for candle in candles:
+            open_time = candle["openTime"]
+            close_time = candle["closeTime"]
+            
+            # Key format: crypto:{symbol}:1m:{openTime}
+            key = f"crypto:{symbol}:1m:{open_time}"
+            
+            # Format value (same as redis_consumer.py)
+            value = {
+                "symbol": symbol,
+                "interval": "1m",
+                "openTime": open_time,
+                "closeTime": close_time,
+                "open": candle["open"],
+                "high": candle["high"],
+                "low": candle["low"],
+                "close": candle["close"],
+                "volume": candle["volume"],
+                "quoteVolume": candle["quoteVolume"],
+                "trades": candle["trades"],
+                "x": True,  # Historical data is always closed
+                "updatedAt": datetime.now().isoformat()
+            }
+            
+            # Save candle with TTL 24h
+            redis_client.setex(
+                key,
+                86400,  # 24 hours
+                json.dumps(value)
+            )
+            
+            # Add to index (sorted set)
+            index_key = f"crypto:{symbol}:1m:index"
+            redis_client.zadd(index_key, {str(open_time): open_time})
+            redis_client.expire(index_key, 86400 * 7)  # 7 days TTL for index
+            
+            # Update latest
+            latest_key = f"crypto:{symbol}:1m:latest"
+            redis_client.setex(latest_key, 86400, json.dumps(value))
+            
+            saved += 1
+        
+    except Exception as e:
+        print(f"  ❌ Error saving to Redis: {e}")
+        skipped = len(candles)
+        saved = 0
+    
+    return saved, skipped
 
 
 def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_client=None, years_back: int = 1, resume_from_existing: bool = True):
@@ -421,7 +421,7 @@ def main():
     print(f"📈 Intervals: {', '.join(INTERVALS)}")
     print(f"📅 Years back: {YEARS_BACK}")
     print(f"💾 MongoDB: {MONGO_DB}")
-    # print(f"🔴 Redis: {REDIS_HOST}:{REDIS_PORT} (for 1m interval)")  # COMMENTED OUT
+    print(f"🔴 Redis: {REDIS_HOST}:{REDIS_PORT} (for 1m interval)")
     print(f"🔄 Resume from existing: {RESUME_FROM_EXISTING}")
     print("=" * 80)
     
@@ -436,22 +436,22 @@ def main():
         print(f"❌ Failed to connect to MongoDB: {e}")
         return
     
-    # Connect to Redis (for 1m interval) - COMMENTED OUT FOR MONGODB ONLY TESTING
-    # redis_client = None
-    # try:
-    #     redis_client = redis.Redis(
-    #         host=REDIS_HOST,
-    #         port=REDIS_PORT,
-    #         db=REDIS_DB,
-    #         password=REDIS_PASSWORD,
-    #         decode_responses=True
-    #     )
-    #     # Test connection
-    #     redis_client.ping()
-    #     print(f"✅ Connected to Redis: {REDIS_HOST}:{REDIS_PORT}")
-    # except Exception as e:
-    #     print(f"❌ Failed to connect to Redis: {e}")
-    #     print(f"⚠️  1m interval will be skipped")
+    # Connect to Redis (for 1m interval)
+    redis_client = None
+    try:
+        redis_client = redis.Redis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            db=REDIS_DB,
+            password=REDIS_PASSWORD,
+            decode_responses=True
+        )
+        # Test connection
+        redis_client.ping()
+        print(f"✅ Connected to Redis: {REDIS_HOST}:{REDIS_PORT}")
+    except Exception as e:
+        print(f"❌ Failed to connect to Redis: {e}")
+        print(f"⚠️  1m interval will be skipped")
     
     # Create indexes for MongoDB collections (skip 1m)
     for interval in INTERVALS:
@@ -489,24 +489,24 @@ def main():
     def process_symbol_interval(symbol: str, interval: str):
         """Process a single symbol-interval combination"""
         try:
-            # if interval == "1m":
-            #     # Save to Redis
-            #     if not redis_client:
-            #     return (symbol, interval, 0, 0, 0, "Redis client not available")
-            #     inserted, skipped, fetched = fetch_and_save_history(
-            #         symbol, interval, collection=None, redis_client=redis_client,
-            #         years_back=YEARS_BACK, resume_from_existing=RESUME_FROM_EXISTING
-            #     )
-            # else:
-            # Save to MongoDB
-            collection_name = COLLECTION_MAP[interval]
-            if not collection_name:
-                return (symbol, interval, 0, 0, 0, f"No collection mapping for {interval}")
-            collection = mongo_db[collection_name]
-            inserted, skipped, fetched = fetch_and_save_history(
-                symbol, interval, collection=collection, redis_client=None,
-                years_back=YEARS_BACK, resume_from_existing=RESUME_FROM_EXISTING
-            )
+            if interval == "1m":
+                # Save to Redis
+                if not redis_client:
+                    return (symbol, interval, 0, 0, 0, "Redis client not available")
+                inserted, skipped, fetched = fetch_and_save_history(
+                    symbol, interval, collection=None, redis_client=redis_client,
+                    years_back=YEARS_BACK, resume_from_existing=RESUME_FROM_EXISTING
+                )
+            else:
+                # Save to MongoDB
+                collection_name = COLLECTION_MAP[interval]
+                if not collection_name:
+                    return (symbol, interval, 0, 0, 0, f"No collection mapping for {interval}")
+                collection = mongo_db[collection_name]
+                inserted, skipped, fetched = fetch_and_save_history(
+                    symbol, interval, collection=collection, redis_client=None,
+                    years_back=YEARS_BACK, resume_from_existing=RESUME_FROM_EXISTING
+                )
             
             with stats_lock:
                 total_stats["inserted"] += inserted
@@ -551,14 +551,9 @@ def main():
     if mongo_client:
         mongo_client.close()
         print("✅ MongoDB connection closed")
-    # if redis_client:
-    #     redis_client.close()
-    #     print("✅ Redis connection closed")
-
-
-if __name__ == "__main__":
-    main()
-
+    if redis_client:
+        redis_client.close()
+        print("✅ Redis connection closed")
 
 
 if __name__ == "__main__":

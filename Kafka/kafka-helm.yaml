@@ -2,6 +2,7 @@ apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: dual-role
+  namespace: crypto-infra 
   labels:
     strimzi.io/cluster: my-cluster
 spec:

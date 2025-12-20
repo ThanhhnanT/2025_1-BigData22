@@ -13,12 +13,11 @@ spec:
       app.kubernetes.io/name: airflow
       app.kubernetes.io/component: statsd
   endpoints:
-    - port: statsd
+    - port: statsd-scrape
       interval: 30s
       scrapeTimeout: 10s
       path: /metrics
   namespaceSelector:
     matchNames:
       - crypto-infra
-
 
