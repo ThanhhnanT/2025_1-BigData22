@@ -66,7 +66,7 @@ def process_batch(batch_df, batch_id):
 
 # Run query with foreachBatch
 query = agg_df.writeStream \
-    .outputMode("update") \
+    .outputMode("complete") \
     .foreachBatch(process_batch) \
     .option("checkpointLocation", CHECKPOINT_PATH) \
     .trigger(processingTime='1 minute') \
