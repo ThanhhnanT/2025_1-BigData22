@@ -19,7 +19,8 @@ from pymongo import MongoClient
 import redis
 
 # Configuration
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net")
+# MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:123456@localhost:27017/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
 MONGO_INPUT_COLLECTION = os.getenv("MONGO_INPUT_COLLECTION", "5m_kline")
 MONGO_PREDICTION_COLLECTION = os.getenv("MONGO_PREDICTION_COLLECTION", "predictions")
@@ -27,9 +28,10 @@ MONGO_PREDICTION_COLLECTION = os.getenv("MONGO_PREDICTION_COLLECTION", "predicti
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
 ENABLE_REDIS = os.getenv("ENABLE_REDIS", "1") == "1"
 
-MODEL_PATH = os.getenv("MODEL_PATH", "/tmp/crypto_lr_model")
+MODEL_PATH = os.getenv("MODEL_PATH", "model/crypto_lr_model")
 LOOKBACK_PERIODS = 30  # Need historical data for feature calculation
 
 SYMBOLS = [
@@ -352,6 +354,7 @@ def main():
                 host=REDIS_HOST,
                 port=REDIS_PORT,
                 db=REDIS_DB,
+                password=REDIS_PASSWORD,
                 decode_responses=True
             )
             for pred in predictions_list:

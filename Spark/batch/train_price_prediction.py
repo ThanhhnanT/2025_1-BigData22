@@ -21,7 +21,8 @@ from pyspark.ml import Pipeline
 from pymongo import MongoClient
 
 # Configuration
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net")
+# MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:123456@localhost:27017/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
 MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "5m_kline")
 
