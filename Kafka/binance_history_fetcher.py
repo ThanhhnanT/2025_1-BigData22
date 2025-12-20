@@ -412,6 +412,12 @@ def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_cl
     print(f"  📅 Time range: {start_date.isoformat()} to {now.isoformat()}")
     print(f"  📅 Timestamps: {start_timestamp} to {end_timestamp}")
     
+    # Calculate expected number of candles for 1m interval
+    if interval == "1m":
+        time_range_ms = end_timestamp - start_timestamp
+        expected_candles = time_range_ms / (60 * 1000)  # 1 minute per candle
+        print(f"  📊 Expected candles for 24h: ~{int(expected_candles)} (1 candle per minute)")
+    
     while current_start < end_timestamp:
         try:
             # Fetch candles
@@ -442,10 +448,16 @@ def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_cl
                 print(f"  📊 {symbol} ({interval}): {total_fetched:,} candles fetched | Saved: {total_inserted:,}, Skipped: {total_skipped:,}")
             
             # Move to next window
-            # Use the closeTime of the last candle + 1ms
+            # For 1m interval, use openTime of last candle + 1 minute to ensure no gaps
             if len(klines) > 0:
-                last_close_time = klines[-1][6]
-                current_start = last_close_time + 1
+                last_open_time = klines[-1][0]  # openTime
+                if interval == "1m":
+                    # For 1m: next candle starts 1 minute after last openTime
+                    current_start = last_open_time + duration
+                else:
+                    # For other intervals: use closeTime + 1ms
+                    last_close_time = klines[-1][6]
+                    current_start = last_close_time + 1
             else:
                 current_start = current_end + 1
             
@@ -461,6 +473,16 @@ def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_cl
             # Advance to next window to avoid infinite loop
             current_start = current_end + 1
             current_end = min(current_start + window_size, end_timestamp)
+    
+    # Final validation for 1m interval
+    if interval == "1m":
+        time_range_ms = end_timestamp - start_timestamp
+        expected_candles = time_range_ms / (60 * 1000)
+        if total_fetched < expected_candles * 0.9:  # Allow 10% tolerance
+            print(f"  ⚠️  Warning: Expected ~{int(expected_candles)} candles but only fetched {total_fetched}")
+            print(f"  ⚠️  Missing ~{int(expected_candles - total_fetched)} candles")
+        else:
+            print(f"  ✅ Fetched {total_fetched} candles (expected ~{int(expected_candles)})")
     
     print(f"  ✅ Completed {symbol} ({interval}): Fetched {total_fetched}, Inserted {total_inserted}, Skipped {total_skipped}")
     return total_inserted, total_skipped, total_fetched
