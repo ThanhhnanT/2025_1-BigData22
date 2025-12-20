@@ -6,9 +6,8 @@ Script to clear Redis data
 import os
 import redis
 
-# Redis config
-REDIS_HOST = os.getenv("REDIS_HOST", "192.168.49.2")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 31001))
+REDIS_HOST = os.getenv("REDIS_HOST", "my-redis-master.crypto-infra.svc.cluster.local")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
 
@@ -33,7 +32,6 @@ try:
     redis_client.ping()
     print("✅ Connected to Redis")
     
-    # Clear all data by deleting keys (FLUSHDB may not be available in replica mode)
     print("\n🗑️  Clearing all data in DB 0...")
     
     # Get all keys
