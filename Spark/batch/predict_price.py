@@ -187,7 +187,7 @@ def create_features(df):
 def main():
     """Main prediction pipeline"""
     print("=" * 80)
-    print("🔮 Crypto Price Prediction - Real-time Inference")
+    print("Crypto Price Prediction - Real-time Inference")
     print("=" * 80)
     
     # Ensure Spark uses the current Python interpreter (Windows fix)
