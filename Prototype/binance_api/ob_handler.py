@@ -1,4 +1,5 @@
 from typing import Dict
+import redis.asyncio as redis
 import json
 import time
 from sortedcontainers import SortedDict
@@ -6,12 +7,15 @@ import aiohttp
 import asyncio
 from aiokafka import AIOKafkaConsumer
 
+REDIS_URL = "redis://localhost:6379"
+
 class LocalOrderBook:
     def __init__(self, symbol):
         self.symbol = symbol
         self.bids = SortedDict(lambda val: -float(val))
         self.asks = SortedDict(lambda val: float(val))
 
+        self.last_push_time = 0
         self.last_updated_id = 0
         self.is_synced = False
 
@@ -27,16 +31,24 @@ class LocalOrderBook:
             else:
                 book_side[price] = qty
     
-    def get_top_n(self, n=10):
-        top_bids = [[p, q] for p, q in list(self.bids.items())[:n]]
-        top_asks = [[p, q] for p, q in list(self.asks.items())[:n]]
+    # def get_top_n(self, n=10):
+    #     top_bids = [[p, q] for p, q in list(self.bids.items())[:n]]
+    #     top_asks = [[p, q] for p, q in list(self.asks.items())[:n]]
 
-        return {
+    #     return {
+    #         "s": self.symbol,
+    #         "b": top_bids,
+    #         "a": top_asks,
+    #         "u": self.last_update_id
+    #     }
+    
+    def get_payload(self):
+        return json.dumps({
             "s": self.symbol,
-            "b": top_bids,
-            "a": top_asks,
+            "b": list(self.bids.items())[:10],
+            "a": list(self.asks.items())[:10],
             "u": self.last_update_id
-        }
+        })
     
     def display_top(self):
         top_bids = list(self.bids.items())[:3]
@@ -82,6 +94,8 @@ async def fetch_snapshot(symbol: str, limit=1000):
             print(e)
 
 async def run_consumer():
+    r = redis.from_url(REDIS_URL, decode_responses=True)
+
     consumer = AIOKafkaConsumer('orderbook_update',
                                 bootstrap_servers=['localhost:9092'],
                                 group_id='ob_consumers',
@@ -90,14 +104,14 @@ async def run_consumer():
     connected = False
     while not connected:
         try:
-            print("📡 Đang cố gắng kết nối với Kafka...")
+            print("Đang thử kết nối với Kafka...")
             await consumer.start()
             connected = True
-            print("✅ Kết nối thành công!")
+            print("Kết nối thành công!")
         except Exception as e:
             print(f"Chưa tìm thấy Coordinator: {e}. Thử lại sau 2s...")
             await asyncio.sleep(2)
-    print("🚀 Consumer đã khởi động. Đang đợi tin nhắn từ Kafka...")
+    print("Consumer đã khởi động. Đang đợi tin nhắn từ Kafka...")
 
     try:
         async for msg in consumer:
@@ -117,8 +131,10 @@ async def run_consumer():
                 if data['u'] > book.last_update_id:
                     book.apply_update(data)
 
-                    if int(time.time()) % 2 == 0: 
-                        book.display_top()
+                    now = time.time()
+                    if now - book.last_push_time > 0.1:
+                        await r.hset("LIVE_ORDERBOOK", symbol, book.get_payload())
+                        book.last_push_time = now
     finally:
         await consumer.stop()
 

@@ -37,7 +37,7 @@ def on_open(ws):
     print("Connection opened")
 
 if __name__ == "__main__":
-    symbols = ['btcusdt', 'ethusdt', 'bnbusdt']
+    symbols = ['btcusdt', 'ethusdt', 'bnbusdt', 'solusdt', 'adausdt', 'xrpusdt']
     streams = "/".join([f"{symbol}@depth" for symbol in symbols])
     socket_url = f"wss://fstream.binance.com/stream?streams={streams}"
     print(socket_url)
