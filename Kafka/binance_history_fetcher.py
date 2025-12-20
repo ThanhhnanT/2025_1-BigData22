@@ -17,24 +17,21 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 import redis
 
-# Environment variables
-# Default to local MongoDB (Helm deployment)
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@192.168.49.2:30376/")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@my-mongo-mongodb.crypto-infra.svc.cluster.local:27017/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
 YEARS_BACK = int(os.getenv("YEARS_BACK", "1"))
 RESUME_FROM_EXISTING = os.getenv("RESUME_FROM_EXISTING", "true").lower() == "true"  # Continue from last saved data
 
-# Redis configuration (for 1m interval)
-REDIS_HOST = os.getenv("REDIS_HOST", "192.168.49.2")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 31001))
+REDIS_HOST = os.getenv("REDIS_HOST", "my-redis-master.crypto-infra.svc.cluster.local")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
 
 # Base symbols from producer file (will be converted to full symbols)
 BASE_SYMBOLS = [
-    "BTC",   # Bitcoin
-    "ETH",   # Ethereum
-    "BNB",   # Binance Coin
+    "BTC",   
+    "ETH",   
+    "BNB",  
     "SOL",   # Solana
     "ADA",   # Cardano
     "XRP",   # Ripple
@@ -49,12 +46,8 @@ BASE_SYMBOLS = [
     "ETC",
 ]
 
-# Convert to full symbols (add USDT suffix)
 SYMBOLS = [f"{symbol}USDT" for symbol in BASE_SYMBOLS]
 
-# Intervals to fetch
-# Note: Binance does not support 5h interval, use 4h instead
-# 1m interval will be saved to Redis (1 day of data)
 INTERVALS = ["1m", "5m", "1h", "4h", "1d"]
 
 # Collection mapping
@@ -67,9 +60,8 @@ COLLECTION_MAP = {
     "1d": "1d_kline",
 }
 
-# Binance API configuration
 API_URL = "https://api.binance.com/api/v3/klines"
-LIMIT = 1000  # Max candles per request
+LIMIT = 1000 
 RATE_LIMIT_DELAY = 0.1  # 100ms between requests (reduced for speed)
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
@@ -373,12 +365,9 @@ def fetch_and_save_history(symbol: str, interval: str, collection=None, redis_cl
         now = datetime.now(timezone.utc)
         end_timestamp = int(now.timestamp() * 1000)
         
-        # Determine start timestamp
         if resume_from_existing:
-            # Check if we have existing data
             latest_timestamp = get_latest_timestamp(collection, symbol, interval)
             if latest_timestamp:
-                # Continue from the next candle after the latest one
                 start_timestamp = latest_timestamp + 1
                 start_date = datetime.fromtimestamp(start_timestamp / 1000, tz=timezone.utc)
                 print(f"  ℹ️  Found existing data up to {datetime.fromtimestamp(latest_timestamp / 1000, tz=timezone.utc).isoformat()}")
@@ -501,7 +490,6 @@ def main():
         print(f"❌ Failed to connect to MongoDB: {e}")
         return
     
-    # Connect to Redis (for 1m interval)
     redis_client = None
     try:
         redis_client = redis.Redis(

@@ -1,26 +1,28 @@
 import json
+import os
 from kafka import KafkaProducer
 import websocket
 import threading
 
-KAFKA_BROKER = "192.168.49.2:30995"
-TOPIC = "crypto_kline_1m"
+# Kafka configuration - default to Kubernetes service name, fallback to local NodePort
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092")
+TOPIC = os.getenv("KAFKA_TOPIC", "crypto_kline_1m")
 
 CRYPTO_SYMBOLS = [
-    "BTC",   # Bitcoin
-    "ETH",   # Ethereum
-    "BNB",   # Binance Coin
-    "SOL",   # Solana
-    "ADA",   # Cardano
-    "XRP",   # Ripple
-    "DOGE",  # Dogecoin
-    "DOT",   # Polkadot
-    "MATIC", # Polygon
-    "AVAX",  # Avalanche
-    "LINK",  # Chainlink
-    "UNI",   # Uniswap
-    "LTC",   # Litecoin
-    "ATOM",  # Cosmos
+    "BTC",   
+    "ETH",   
+    "BNB",   
+    "SOL",   
+    "ADA",   
+    "XRP",   
+    "DOGE",  
+    "DOT",   
+    "MATIC", 
+    "AVAX",  
+    "LINK", 
+    "UNI",   
+    "LTC",   
+    "ATOM",  
     "ETC",
 ]
 
