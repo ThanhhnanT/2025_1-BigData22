@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-fastapi
+  namespace: crypto-app
+  labels:
+    app: backend-fastapi
+    release: crypto-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: backend-fastapi
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - crypto-app
+

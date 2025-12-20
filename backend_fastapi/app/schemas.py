@@ -80,3 +80,40 @@ class TradesResponse(BaseModel):
     count: int
     trades: List[Trade]
 
+
+class Prediction(BaseModel):
+    symbol: str
+    current_price: float
+    predicted_price: float
+    predicted_change: float = Field(..., description="Predicted price change in %")
+    direction: str = Field(..., description="UP or DOWN")
+    prediction_time: str = Field(..., description="When prediction was made")
+    target_time: str = Field(..., description="Target prediction time (5 min ahead)")
+    confidence_score: float = Field(..., description="Absolute value of predicted change")
+
+
+class PredictionResponse(BaseModel):
+    symbol: str
+    prediction: Prediction
+
+
+class PredictionsListResponse(BaseModel):
+    count: int
+    predictions: List[Prediction]
+
+
+class PredictionHistory(BaseModel):
+    symbol: str
+    prediction_time: str
+    predicted_price: float
+    predicted_change: float
+    actual_price: Optional[float] = None
+    actual_change: Optional[float] = None
+    accuracy: Optional[float] = None
+
+
+class PredictionHistoryResponse(BaseModel):
+    symbol: str
+    count: int
+    history: List[PredictionHistory]
+

@@ -71,10 +71,15 @@ monitoring:
       service:
         type: ClusterIP
       prometheusSpec:
+        # Allow Prometheus to discover ServiceMonitors from other namespaces
+        serviceMonitorSelectorNilUsesHelmValues: false
+        serviceMonitorSelector: {}
+        serviceMonitorNamespaceSelector: {}
+        # Additional scrape configs for services that don't use ServiceMonitor
         additionalScrapeConfigs:
           - job_name: kafka
             static_configs:
-              - targets: ['crypto-kafka.crypto-infra.svc.cluster.local:9092']
+              - targets: ['my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092']
           - job_name: spark-operator
             static_configs:
               - targets: ['crypto-spark-operator-metrics.crypto-infra.svc.cluster.local:10254']
