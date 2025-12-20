@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-apps-config
+  namespace: crypto-infra
+data:
+  # Kafka configuration
+  KAFKA_BROKER: "my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092"
+  KAFKA_TOPIC: "crypto_kline_1m"
+  KAFKA_TOPIC_ORDERBOOK: "crypto_orderbook"
+  KAFKA_TOPIC_TRADES: "crypto_trades"
+  
+  # Redis configuration
+  REDIS_HOST: "my-redis-master.crypto-infra.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_PASSWORD: "123456"
+  
+  # MongoDB configuration
+  MONGO_URI: "mongodb://root:8WcVPD9QHx@my-mongo-mongodb.crypto-infra.svc.cluster.local:27017/"
+  MONGO_DB: "CRYPTO"
+  
+  # Consumer groups
+  CONSUMER_GROUP: "redis_writer_group"
+  
+  # History fetcher configuration
+  YEARS_BACK: "1"
+  RESUME_FROM_EXISTING: "true"

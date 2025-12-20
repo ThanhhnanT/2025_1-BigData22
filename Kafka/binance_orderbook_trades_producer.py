@@ -1,41 +1,40 @@
 import json
+import os
 from kafka import KafkaProducer
 import websocket
 import threading
 import time
 
-KAFKA_BROKER = "192.168.49.2:30995"
-TOPIC_ORDERBOOK = "crypto_orderbook"
-TOPIC_TRADES = "crypto_trades"
+# Kafka configuration - default to Kubernetes service name, fallback to local NodePort
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092")
+TOPIC_ORDERBOOK = os.getenv("KAFKA_TOPIC_ORDERBOOK", "crypto_orderbook")
+TOPIC_TRADES = os.getenv("KAFKA_TOPIC_TRADES", "crypto_trades")
 
 CRYPTO_SYMBOLS = [
-    "BTC",   # Bitcoin
-    "ETH",   # Ethereum
-    "BNB",   # Binance Coin
-    "SOL",   # Solana
-    "ADA",   # Cardano
-    "XRP",   # Ripple
-    "DOGE",  # Dogecoin
-    "DOT",   # Polkadot
-    "MATIC", # Polygon
-    "AVAX",  # Avalanche
-    "LINK",  # Chainlink
-    "UNI",   # Uniswap
-    "LTC",   # Litecoin
-    "ATOM",  # Cosmos
+    "BTC",  
+    "ETH",   
+    "BNB",   
+    "SOL",   
+    "ADA",   
+    "XRP",   
+    "DOGE",  
+    "DOT",  
+    "MATIC", 
+    "AVAX",  
+    "LINK",  
+    "UNI",   
+    "LTC",   
+    "ATOM", 
     "ETC",
 ]
 
 def build_stream_url(symbols):
-    """
-    Build WebSocket URL for Order Book depth and Trade streams.
-    Format: {symbol}@depth@100ms and {symbol}@trade
-    """
+
     streams = []
     for symbol in symbols:
         symbol_lower = symbol.lower()
-        streams.append(f"{symbol_lower}usdt@depth@1000ms")  # Order Book updates every 100ms
-        streams.append(f"{symbol_lower}usdt@trade")        # Market Trades
+        streams.append(f"{symbol_lower}usdt@depth@1000ms") 
+        streams.append(f"{symbol_lower}usdt@trade")      
     stream_path = "/".join(streams)
     return f"wss://stream.binance.com:9443/stream?streams={stream_path}"
 
@@ -51,14 +50,12 @@ def on_message(ws, message):
     try:
         data = json.loads(message)
         
-        # Binance WebSocket format: {"stream": "btcusdt@depth@100ms", "data": {...}}
         if "stream" in data and "data" in data:
             stream_name = data["stream"]
             stream_data = data["data"]
-            
-            # Determine stream type and symbol
+
             if "@depth" in stream_name:
-                # Order Book depth update
+                
                 symbol = stream_data.get("s", "").upper()
                 if symbol:
                     # Add timestamp and stream info

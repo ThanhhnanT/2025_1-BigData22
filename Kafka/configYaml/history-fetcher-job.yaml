@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: binance-history-fetcher
+  namespace: crypto-infra
+spec:
+  template:
+    metadata:
+      labels:
+        app: binance-history-fetcher
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: history-fetcher
+        image: crypto-binance:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python3", "binance_history_fetcher.py"]
+        envFrom:
+        - configMapRef:
+            name: kafka-apps-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"

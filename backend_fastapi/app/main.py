@@ -11,7 +11,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from .config import settings
 from .schemas import (
     Candle, LatestKline, OHLCResponse,
-    OrderBookResponse, OrderBookEntry, TradesResponse, Trade
+    OrderBookResponse, OrderBookEntry, TradesResponse, Trade,
+    Prediction, PredictionResponse, PredictionsListResponse,
+    PredictionHistory, PredictionHistoryResponse
 )
 from .kafka_manager import SharedKafkaManager
 
@@ -295,6 +297,126 @@ async def get_trades(
         symbol=symbol,
         count=len(trades),
         trades=trades
+    )
+
+
+# ========== PREDICTION ENDPOINTS ==========
+
+@app.get("/prediction/{symbol}", response_model=PredictionResponse)
+async def get_prediction(
+    symbol: str,
+    redis_client=Depends(get_redis),
+):
+    """Get latest price prediction for a symbol"""
+    key = f"crypto:prediction:{symbol}"
+    raw = await redis_client.get(key)
+    if not raw:
+        raise HTTPException(status_code=404, detail=f"No prediction available for {symbol}")
+    
+    data = json.loads(raw)
+    return PredictionResponse(
+        symbol=symbol,
+        prediction=Prediction(**data)
+    )
+
+
+@app.get("/predictions", response_model=PredictionsListResponse)
+async def get_all_predictions(
+    redis_client=Depends(get_redis),
+):
+    """Get latest predictions for all symbols"""
+    pattern = "crypto:prediction:*"
+    keys = []
+    
+    # Scan for all prediction keys
+    cursor = 0
+    while True:
+        cursor, partial_keys = await redis_client.scan(cursor, match=pattern, count=100)
+        keys.extend(partial_keys)
+        if cursor == 0:
+            break
+    
+    predictions = []
+    for key in keys:
+        raw = await redis_client.get(key)
+        if raw:
+            data = json.loads(raw)
+            predictions.append(Prediction(**data))
+    
+    # Sort by confidence score descending
+    predictions.sort(key=lambda p: p.confidence_score, reverse=True)
+    
+    return PredictionsListResponse(
+        count=len(predictions),
+        predictions=predictions
+    )
+
+
+@app.get("/prediction/{symbol}/history", response_model=PredictionHistoryResponse)
+async def get_prediction_history(
+    symbol: str,
+    limit: int = Query(50, ge=1, le=200),
+    mongo=Depends(get_mongo),
+):
+    """Get historical predictions with actual outcomes"""
+    collection = mongo["predictions"]
+    
+    # Get recent predictions
+    cursor = collection.find(
+        {"symbol": symbol}
+    ).sort("prediction_time", -1).limit(limit)
+    
+    predictions = await cursor.to_list(length=limit)
+    
+    if not predictions:
+        raise HTTPException(status_code=404, detail=f"No prediction history for {symbol}")
+    
+    # Get actual prices from 5m kline collection
+    kline_collection = mongo["5m_kline"]
+    
+    history = []
+    for pred in predictions:
+        from datetime import datetime
+        prediction_time = datetime.fromisoformat(pred["prediction_time"].replace('Z', '+00:00'))
+        target_time = datetime.fromisoformat(pred["target_time"].replace('Z', '+00:00'))
+        
+        target_timestamp = int(target_time.timestamp() * 1000)
+        
+        # Find actual price at target time
+        actual_candle = await kline_collection.find_one({
+            "symbol": symbol,
+            "interval": "5m",
+            "openTime": {"$lte": target_timestamp, "$gte": target_timestamp - 300000}
+        })
+        
+        actual_price = None
+        actual_change = None
+        accuracy = None
+        
+        if actual_candle:
+            actual_price = actual_candle.get("close")
+            if actual_price and pred.get("close"):
+                actual_change = ((actual_price - pred["close"]) / pred["close"]) * 100
+                
+                # Calculate accuracy (how close prediction was)
+                predicted_change = pred.get("predicted_change_pct", 0)
+                if predicted_change != 0:
+                    accuracy = max(0, 100 - abs((actual_change - predicted_change) / predicted_change * 100))
+        
+        history.append(PredictionHistory(
+            symbol=symbol,
+            prediction_time=pred["prediction_time"],
+            predicted_price=pred.get("predicted_price"),
+            predicted_change=pred.get("predicted_change_pct"),
+            actual_price=actual_price,
+            actual_change=actual_change,
+            accuracy=accuracy
+        ))
+    
+    return PredictionHistoryResponse(
+        symbol=symbol,
+        count=len(history),
+        history=history
     )
 
 
