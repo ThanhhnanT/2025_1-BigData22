@@ -31,17 +31,6 @@ class LocalOrderBook:
             else:
                 book_side[price] = qty
     
-    # def get_top_n(self, n=10):
-    #     top_bids = [[p, q] for p, q in list(self.bids.items())[:n]]
-    #     top_asks = [[p, q] for p, q in list(self.asks.items())[:n]]
-
-    #     return {
-    #         "s": self.symbol,
-    #         "b": top_bids,
-    #         "a": top_asks,
-    #         "u": self.last_update_id
-    #     }
-    
     def get_payload(self):
         return json.dumps({
             "s": self.symbol,
