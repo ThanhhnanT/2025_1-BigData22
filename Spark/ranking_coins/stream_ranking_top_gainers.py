@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, to_json, struct, when, lit, desc
+from pyspark.sql.functions import from_json, col, max, desc, to_json, struct
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StringType, DoubleType, LongType, StructField
 from pyspark.sql.window import Window
@@ -10,7 +10,7 @@ SPARK_KAFKA_PACKAGE = 'org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0'
 CHECKPOINT_PATH = "/tmp/spark/rolling_change_cp"
 
 KLINE_SCHEMA = StructType([
-    StructField("s", StringType()),   # trading symbol
+    StructField("s", StringType()),   # symbol
     StructField("c", StringType()),   # close price
     StructField("t", LongType()),     # timestamp (ms)
 ])
@@ -38,38 +38,39 @@ processed_df = kline_df \
     .filter(col("close_price_num").isNotNull()) \
     .withColumn("event_ts", (col("t")/1000).cast("timestamp"))
 
-# Aggregate: last close price per 1-minute window
+# Aggregate: lấy giá close mới nhất trong mỗi cửa sổ 5 phút
 agg_df = processed_df \
     .withWatermark("event_ts", "2 minutes") \
-    .groupBy(F.window(col("event_ts"), "1 minute"), col("s")) \
+    .groupBy(F.window(col("event_ts"), "1 minutes"), col("s")) \
     .agg(F.max(F.struct(col("t"), col("close_price_num"))).alias("latest_struct")) \
     .select(
-        col("window").start.alias("window_start"),
         col("s"),
+        col("window").start.alias("window_start"),
         col("latest_struct").getField("close_price_num").alias("close_price")
     )
 
-# foreachBatch logic
+# foreachBatch để tính rolling % change
 def process_batch(batch_df, batch_id):
     if batch_df.rdd.isEmpty():
         return
     w = Window.partitionBy("s").orderBy("window_start")
     result = batch_df.withColumn("prev_close", F.lag("close_price").over(w)) \
                      .withColumn("percent_change",
-                         when(col("prev_close").isNotNull(),
-                              ((col("close_price") - col("prev_close")) / col("prev_close") * 100)
-                         ).otherwise(lit(0))
-                     )
-    ranked = result.orderBy(desc("percent_change"))
+                                 ((col("close_price") - col("prev_close")) / col("prev_close") * 100))
+    ranked = result.orderBy(F.desc("percent_change"))
     print(f"=== Batch {batch_id} ===")
     ranked.show(truncate=False)
 
-# Run query with foreachBatch
-query = agg_df.writeStream \
+# Query 1: console (bật mặc định)
+console_query = agg_df.writeStream \
     .outputMode("complete") \
     .foreachBatch(process_batch) \
-    .option("checkpointLocation", CHECKPOINT_PATH) \
+    .option("checkpointLocation", CHECKPOINT_PATH + "_console") \
     .trigger(processingTime='1 minute') \
     .start()
 
-query.awaitTermination() 
+
+
+console_query.awaitTermination()
+
+
