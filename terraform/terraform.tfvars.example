@@ -1,0 +1,55 @@
+# AWS Configuration
+aws_region = "ap-southeast-1"
+
+# Cluster Configuration
+cluster_name      = "crypto-eks"
+environment       = "dev"
+kubernetes_version = "1.28"
+
+# VPC Configuration
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = []  # Leave empty to auto-detect, or specify: ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
+
+# Network Configuration
+enable_nat_gateway  = true
+single_nat_gateway  = false  # Set to true for cost optimization (single NAT gateway)
+enable_vpc_endpoints = true  # Enable VPC endpoints for S3, ECR to reduce NAT costs
+
+# EKS API Access
+enable_public_access = true
+allowed_cidr_blocks  = ["0.0.0.0/0"]  # Restrict this in production
+
+# Node Instance Types
+node_instance_types = {
+  application     = ["t3.large"]
+  data_processing = ["t3.xlarge"]
+  system          = ["t3.medium"]
+}
+
+# Node Groups Configuration
+node_groups_config = {
+  application = {
+    min_size     = 2
+    max_size     = 5
+    desired_size = 2
+  }
+  data_processing = {
+    min_size     = 2
+    max_size     = 4
+    desired_size = 2
+  }
+  system = {
+    min_size     = 2
+    max_size     = 3
+    desired_size = 2
+  }
+}
+
+# Common Tags
+tags = {
+  Project     = "Crypto-Trading-Platform"
+  ManagedBy   = "Terraform"
+  Environment = "dev"
+  Team        = "BigData"
+}
+

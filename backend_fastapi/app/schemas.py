@@ -11,6 +11,7 @@ class Candle(BaseModel):
     close: float
     volume: float
     trades: Optional[int] = None
+    indicators: Optional[Dict[str, Any]] = Field(None, description="Pre-calculated technical indicators")
 
     def as_chart_point(self) -> dict:
         return {

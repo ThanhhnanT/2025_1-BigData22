@@ -166,6 +166,8 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMorePast, setIsLoadingMorePast] = useState(false);
   const [hasMorePast, setHasMorePast] = useState(true);
+  const [indicatorsData, setIndicatorsData] = useState<Record<string, any>>({});
+  const [useApiIndicators, setUseApiIndicators] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -619,6 +621,62 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
     };
   }, [API_BASE, mode, symbol, hasMorePast, isLoadingMorePast]);
 
+  // Fetch indicators from API when indicators config or symbol/mode changes
+  useEffect(() => {
+    if (!indicators) {
+      setIndicatorsData({});
+      return;
+    }
+
+    // Get enabled indicator types
+    const enabledTypes: string[] = [];
+    if (indicators.ma7?.enabled) enabledTypes.push("ma7");
+    if (indicators.ma25?.enabled) enabledTypes.push("ma25");
+    if (indicators.ema12?.enabled) enabledTypes.push("ema12");
+    if (indicators.ema26?.enabled) enabledTypes.push("ema26");
+    if (indicators.ema50?.enabled) enabledTypes.push("ema50");
+    if (indicators.bollinger?.enabled) enabledTypes.push("bollinger");
+
+    if (enabledTypes.length === 0) {
+      setIndicatorsData({});
+      return;
+    }
+
+    const fetchIndicators = async () => {
+      try {
+        const typesParam = enabledTypes.join(",");
+        let url: string;
+        
+        if (mode === "realtime") {
+          // Real-time indicators from Redis
+          url = `${API_BASE}/indicators/realtime?symbol=${symbol}&types=${typesParam}`;
+        } else {
+          // Historical indicators from MongoDB
+          const intervalMap: Record<string, string> = {
+            "7day": "5m",
+            "30day": "1h",
+            "6month": "4h",
+            "1year": "1d"
+          };
+          const interval = intervalMap[mode] || "5m";
+          url = `${API_BASE}/indicators/historical?symbol=${symbol}&interval=${interval}&types=${typesParam}`;
+        }
+
+        const response = await axios.get(url);
+        if (response.data && response.data.indicators) {
+          setIndicatorsData(response.data.indicators);
+          setUseApiIndicators(true);
+        }
+      } catch (error) {
+        console.warn("Failed to fetch indicators from API, falling back to local calculation:", error);
+        setUseApiIndicators(false);
+        setIndicatorsData({});
+      }
+    };
+
+    fetchIndicators();
+  }, [API_BASE, mode, symbol, indicators]);
+
   // Calculate series with indicators
   const series = useMemo(() => {
     // Always return at least a candlestick series (even if empty) to avoid ApexCharts errors
@@ -644,83 +702,156 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
       return result;
     }
 
-    // Add Moving Averages
-    if (indicators.ma7?.enabled) {
-      result.push({
-        name: indicators.ma7.label,
-        type: "line",
-        data: calculateSMA(candleData, indicators.ma7.period || 7),
-        color: indicators.ma7.color,
-      });
-    }
-    if (indicators.ma25?.enabled) {
-      result.push({
-        name: indicators.ma25.label,
-        type: "line",
-        data: calculateSMA(candleData, indicators.ma25.period || 25),
-        color: indicators.ma25.color,
-      });
-    }
-    if (indicators.ma99?.enabled) {
-      result.push({
-        name: indicators.ma99.label,
-        type: "line",
-        data: calculateSMA(candleData, indicators.ma99.period || 99),
-        color: indicators.ma99.color,
-      });
-    }
+    // Use API indicators if available, otherwise fallback to local calculation
+    if (useApiIndicators && Object.keys(indicatorsData).length > 0) {
+      // Add Moving Averages from API
+      if (indicators.ma7?.enabled && indicatorsData.ma7) {
+        result.push({
+          name: indicators.ma7.label,
+          type: "line",
+          data: indicatorsData.ma7,
+          color: indicators.ma7.color,
+        });
+      }
+      if (indicators.ma25?.enabled && indicatorsData.ma25) {
+        result.push({
+          name: indicators.ma25.label,
+          type: "line",
+          data: indicatorsData.ma25,
+          color: indicators.ma25.color,
+        });
+      }
 
-    // Add Exponential Moving Averages
-    if (indicators.ema12?.enabled) {
-      result.push({
-        name: indicators.ema12.label,
-        type: "line",
-        data: calculateEMA(candleData, indicators.ema12.period || 12),
-        color: indicators.ema12.color,
-      });
-    }
-    if (indicators.ema26?.enabled) {
-      result.push({
-        name: indicators.ema26.label,
-        type: "line",
-        data: calculateEMA(candleData, indicators.ema26.period || 26),
-        color: indicators.ema26.color,
-      });
-    }
-    if (indicators.ema50?.enabled) {
-      result.push({
-        name: indicators.ema50.label,
-        type: "line",
-        data: calculateEMA(candleData, indicators.ema50.period || 50),
-        color: indicators.ema50.color,
-      });
-    }
+      // Add Exponential Moving Averages from API
+      if (indicators.ema12?.enabled && indicatorsData.ema12) {
+        result.push({
+          name: indicators.ema12.label,
+          type: "line",
+          data: indicatorsData.ema12,
+          color: indicators.ema12.color,
+        });
+      }
+      if (indicators.ema26?.enabled && indicatorsData.ema26) {
+        result.push({
+          name: indicators.ema26.label,
+          type: "line",
+          data: indicatorsData.ema26,
+          color: indicators.ema26.color,
+        });
+      }
+      if (indicators.ema50?.enabled && indicatorsData.ema50) {
+        result.push({
+          name: indicators.ema50.label,
+          type: "line",
+          data: indicatorsData.ema50,
+          color: indicators.ema50.color,
+        });
+      }
 
-    // Add Bollinger Bands
-    if (indicators.bollinger?.enabled) {
-      const bb = calculateBollingerBands(candleData, indicators.bollinger.period || 20);
-      result.push({
-        name: "BB Upper",
-        type: "line",
-        data: bb.upper,
-        color: indicators.bollinger.color,
-      });
-      result.push({
-        name: "BB Middle",
-        type: "line",
-        data: bb.middle,
-        color: indicators.bollinger.color,
-      });
-      result.push({
-        name: "BB Lower",
-        type: "line",
-        data: bb.lower,
-        color: indicators.bollinger.color,
-      });
+      // Add Bollinger Bands from API
+      if (indicators.bollinger?.enabled && indicatorsData.bollinger) {
+        const bb = indicatorsData.bollinger;
+        if (bb.upper && bb.middle && bb.lower) {
+          result.push({
+            name: "BB Upper",
+            type: "line",
+            data: bb.upper,
+            color: indicators.bollinger.color,
+          });
+          result.push({
+            name: "BB Middle",
+            type: "line",
+            data: bb.middle,
+            color: indicators.bollinger.color,
+          });
+          result.push({
+            name: "BB Lower",
+            type: "line",
+            data: bb.lower,
+            color: indicators.bollinger.color,
+          });
+        }
+      }
+    } else {
+      // Fallback to local calculation
+      // Add Moving Averages
+      if (indicators.ma7?.enabled) {
+        result.push({
+          name: indicators.ma7.label,
+          type: "line",
+          data: calculateSMA(candleData, indicators.ma7.period || 7),
+          color: indicators.ma7.color,
+        });
+      }
+      if (indicators.ma25?.enabled) {
+        result.push({
+          name: indicators.ma25.label,
+          type: "line",
+          data: calculateSMA(candleData, indicators.ma25.period || 25),
+          color: indicators.ma25.color,
+        });
+      }
+      if (indicators.ma99?.enabled) {
+        result.push({
+          name: indicators.ma99.label,
+          type: "line",
+          data: calculateSMA(candleData, indicators.ma99.period || 99),
+          color: indicators.ma99.color,
+        });
+      }
+
+      // Add Exponential Moving Averages
+      if (indicators.ema12?.enabled) {
+        result.push({
+          name: indicators.ema12.label,
+          type: "line",
+          data: calculateEMA(candleData, indicators.ema12.period || 12),
+          color: indicators.ema12.color,
+        });
+      }
+      if (indicators.ema26?.enabled) {
+        result.push({
+          name: indicators.ema26.label,
+          type: "line",
+          data: calculateEMA(candleData, indicators.ema26.period || 26),
+          color: indicators.ema26.color,
+        });
+      }
+      if (indicators.ema50?.enabled) {
+        result.push({
+          name: indicators.ema50.label,
+          type: "line",
+          data: calculateEMA(candleData, indicators.ema50.period || 50),
+          color: indicators.ema50.color,
+        });
+      }
+
+      // Add Bollinger Bands
+      if (indicators.bollinger?.enabled) {
+        const bb = calculateBollingerBands(candleData, indicators.bollinger.period || 20);
+        result.push({
+          name: "BB Upper",
+          type: "line",
+          data: bb.upper,
+          color: indicators.bollinger.color,
+        });
+        result.push({
+          name: "BB Middle",
+          type: "line",
+          data: bb.middle,
+          color: indicators.bollinger.color,
+        });
+        result.push({
+          name: "BB Lower",
+          type: "line",
+          data: bb.lower,
+          color: indicators.bollinger.color,
+        });
+      }
     }
 
     return result;
-  }, [candleData, indicators]);
+  }, [candleData, indicators, indicatorsData, useApiIndicators]);
 
   // Calculate dynamic stroke widths based on series types
   const strokeWidths = useMemo(() => {

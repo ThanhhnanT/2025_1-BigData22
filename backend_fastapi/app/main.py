@@ -18,6 +18,7 @@ from .schemas import (
     RankingResponse, CoinRanking
 )
 from .kafka_manager import SharedKafkaManager
+from .indicators import calculate_indicators
 
 
 @asynccontextmanager
@@ -796,5 +797,209 @@ async def get_prediction(
         raise HTTPException(
             status_code=500,
             detail=f"Error loading prediction for {symbol}: {str(e)}"
+        )
+
+
+@app.get("/indicators/realtime")
+async def get_realtime_indicators(
+    symbol: str = Query("BTCUSDT", description="Trading pair, e.g. BTCUSDT"),
+    types: str = Query("ma7,ma25,ema12", description="Comma-separated indicator types (e.g., ma7,ma25,ema12,bollinger)"),
+    limit: int = Query(200, ge=1, le=2000, description="Number of candles to use for calculation"),
+    redis_client=Depends(get_redis),
+):
+    """
+    Get real-time technical indicators calculated from Redis data.
+    Results are cached in Redis for 5 minutes.
+    """
+    import hashlib
+    
+    # Parse indicator types
+    indicator_types = [t.strip() for t in types.split(",") if t.strip()]
+    if not indicator_types:
+        raise HTTPException(status_code=400, detail="At least one indicator type is required")
+    
+    try:
+        # Get OHLC data from Redis
+        index_key = f"crypto:{symbol}:1m:index"
+        timestamps = await redis_client.zrange(index_key, -limit, -1, withscores=True)
+        
+        if not timestamps:
+            raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
+        
+        # Get latest candle timestamp for cache key
+        latest_timestamp = int(timestamps[-1][1]) if timestamps else 0
+        
+        # Build cache key
+        types_hash = hashlib.md5(",".join(sorted(indicator_types)).encode()).hexdigest()[:8]
+        cache_key = f"indicator:realtime:{symbol}:{types_hash}:{latest_timestamp}"
+        
+        # Check cache
+        cached = await redis_client.get(cache_key)
+        if cached:
+            try:
+                return json.loads(cached)
+            except json.JSONDecodeError:
+                pass  # Cache corrupted, recalculate
+        
+        # Fetch candles from Redis
+        candles = []
+        for ts_str, score in timestamps:
+            key = f"crypto:{symbol}:1m:{ts_str}"
+            raw = await redis_client.get(key)
+            if raw:
+                data = json.loads(raw)
+                # Only include closed candles
+                if data.get("x", False):
+                    candles.append({
+                        "openTime": data["openTime"],
+                        "close": data["close"],
+                        "open": data["open"],
+                        "high": data["high"],
+                        "low": data["low"],
+                        "volume": data.get("volume", 0)
+                    })
+        
+        if not candles:
+            raise HTTPException(status_code=404, detail=f"No closed candles found for {symbol}")
+        
+        # Sort by openTime ascending
+        candles.sort(key=lambda x: x["openTime"])
+        
+        # Calculate indicators
+        indicators = calculate_indicators(candles, indicator_types)
+        
+        # Prepare response
+        response = {
+            "symbol": symbol,
+            "interval": "1m",
+            "indicators": indicators,
+            "candle_count": len(candles),
+            "last_timestamp": latest_timestamp
+        }
+        
+        # Cache result for 5 minutes (300 seconds)
+        await redis_client.setex(cache_key, 300, json.dumps(response))
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error calculating real-time indicators: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error calculating indicators: {str(e)}"
+        )
+
+
+@app.get("/indicators/historical")
+async def get_historical_indicators(
+    symbol: str = Query("BTCUSDT", description="Trading pair, e.g. BTCUSDT"),
+    interval: str = Query("5m", description="Interval (5m, 1h, 4h, 1d)"),
+    types: str = Query("ma7,ma25,ema12", description="Comma-separated indicator types"),
+    collection: Optional[str] = Query(None, description="MongoDB collection name"),
+    limit: int = Query(200, ge=1, le=2000),
+    start: Optional[int] = Query(None, description="Start openTime (ms)"),
+    end: Optional[int] = Query(None, description="End openTime (ms)"),
+    mongo=Depends(get_mongo),
+):
+    """
+    Get historical technical indicators from MongoDB (pre-calculated by Spark).
+    If indicators are not found in MongoDB, returns empty dict.
+    """
+    # Parse indicator types
+    indicator_types = [t.strip() for t in types.split(",") if t.strip()]
+    if not indicator_types:
+        raise HTTPException(status_code=400, detail="At least one indicator type is required")
+    
+    # Determine collection
+    if collection:
+        col_name = collection
+    else:
+        collection_map = {
+            "5m": "5m_kline",
+            "1h": "1h_kline",
+            "4h": "4h_kline",
+            "1d": "1d_kline",
+        }
+        col_name = collection_map.get(interval, "5m_kline")
+    
+    try:
+        col = mongo[col_name]
+        query = {"symbol": symbol, "interval": interval}
+        if start is not None and end is not None:
+            query["openTime"] = {"$gte": start, "$lte": end}
+        elif start is not None:
+            query["openTime"] = {"$gte": start}
+        elif end is not None:
+            query["openTime"] = {"$lte": end}
+        
+        # Projection to include indicators field
+        projection = {
+            "openTime": 1,
+            "indicators": 1
+        }
+        
+        cursor = (
+            col.find(query, projection)
+            .sort("openTime", 1)  # Ascending for chronological order
+            .limit(limit)
+        )
+        docs = await cursor.to_list(length=limit)
+        
+        # Extract indicators from documents
+        result_indicators = {ind_type: [] for ind_type in indicator_types}
+        
+        for doc in docs:
+            indicators = doc.get("indicators", {})
+            timestamp = doc.get("openTime", 0)
+            
+            for ind_type in indicator_types:
+                if ind_type == "bollinger":
+                    # Bollinger Bands is a nested object
+                    bb = indicators.get("bollinger", {})
+                    if not result_indicators[ind_type]:
+                        result_indicators[ind_type] = {
+                            "upper": [],
+                            "middle": [],
+                            "lower": []
+                        }
+                    result_indicators[ind_type]["upper"].append({
+                        "x": timestamp,
+                        "y": bb.get("upper")
+                    })
+                    result_indicators[ind_type]["middle"].append({
+                        "x": timestamp,
+                        "y": bb.get("middle")
+                    })
+                    result_indicators[ind_type]["lower"].append({
+                        "x": timestamp,
+                        "y": bb.get("lower")
+                    })
+                else:
+                    # Simple indicators (ma, ema)
+                    value = indicators.get(ind_type)
+                    result_indicators[ind_type].append({
+                        "x": timestamp,
+                        "y": value
+                    })
+        
+        return {
+            "symbol": symbol,
+            "interval": interval,
+            "indicators": result_indicators,
+            "count": len(docs),
+            "from_cache": True  # Indicates data came from MongoDB (pre-calculated)
+        }
+        
+    except Exception as e:
+        print(f"Error fetching historical indicators: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching historical indicators: {str(e)}"
         )
 

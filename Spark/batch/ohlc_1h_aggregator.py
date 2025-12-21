@@ -7,7 +7,7 @@ Aggregates 5m kline data from MongoDB into 1h OHLC candles
 import os
 from datetime import datetime, timedelta, timezone
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, first, last, max as spark_max, min as spark_min, sum as spark_sum
+from pyspark.sql.functions import col, first, last, max as spark_max, min as spark_min, sum as spark_sum, avg, stddev, Window
 from pymongo import MongoClient
 from pymongo.errors import OperationFailure
 
@@ -160,6 +160,24 @@ def main():
         last("closeTime").alias("closeTime")
     )
     
+    # Calculate indicators using Window functions
+    window_spec = Window.partitionBy("symbol").orderBy("openTime")
+    
+    # Calculate moving averages
+    aggregated_df = aggregated_df.withColumn("ma7", avg("close").over(window_spec.rowsBetween(-6, 0)))
+    aggregated_df = aggregated_df.withColumn("ma25", avg("close").over(window_spec.rowsBetween(-24, 0)))
+    aggregated_df = aggregated_df.withColumn("ema12", avg("close").over(window_spec.rowsBetween(-11, 0)))
+    aggregated_df = aggregated_df.withColumn("ema26", avg("close").over(window_spec.rowsBetween(-25, 0)))
+    aggregated_df = aggregated_df.withColumn("ema50", avg("close").over(window_spec.rowsBetween(-49, 0)))
+    
+    # Calculate Bollinger Bands
+    ma20 = avg("close").over(window_spec.rowsBetween(-19, 0))
+    std20 = stddev("close").over(window_spec.rowsBetween(-19, 0))
+    aggregated_df = aggregated_df.withColumn("bb_middle", ma20)
+    aggregated_df = aggregated_df.withColumn("bb_std", std20)
+    aggregated_df = aggregated_df.withColumn("bb_upper", col("bb_middle") + (col("bb_std") * 2.0))
+    aggregated_df = aggregated_df.withColumn("bb_lower", col("bb_middle") - (col("bb_std") * 2.0))
+    
     # Convert to list of documents
     results = aggregated_df.collect()
     
@@ -182,6 +200,29 @@ def main():
             total_skipped += 1
             continue
         
+        # Prepare indicators dict
+        indicators = {}
+        
+        if row.get("ma7") is not None:
+            indicators["ma7"] = float(row["ma7"])
+        if row.get("ma25") is not None:
+            indicators["ma25"] = float(row["ma25"])
+        if row.get("ema12") is not None:
+            indicators["ema12"] = float(row["ema12"])
+        if row.get("ema26") is not None:
+            indicators["ema26"] = float(row["ema26"])
+        if row.get("ema50") is not None:
+            indicators["ema50"] = float(row["ema50"])
+        
+        if (row.get("bb_upper") is not None and 
+            row.get("bb_middle") is not None and 
+            row.get("bb_lower") is not None):
+            indicators["bollinger"] = {
+                "upper": float(row["bb_upper"]),
+                "middle": float(row["bb_middle"]),
+                "lower": float(row["bb_lower"])
+            }
+        
         mongo_doc = {
             "symbol": row["symbol"],
             "interval": "1h",
@@ -194,6 +235,7 @@ def main():
             "volume": row["volume"],
             "quoteVolume": row["quoteVolume"],
             "trades": row["trades"],
+            "indicators": indicators if indicators else None,
             "createdAt": datetime.now(),
             "source": "spark_1h_aggregator"
         }

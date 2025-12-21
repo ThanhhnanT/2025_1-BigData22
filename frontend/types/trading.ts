@@ -83,3 +83,30 @@ export interface PredictionResponse {
   symbol: string;
   prediction: Prediction;
 }
+
+// =============================================================================
+// INDICATOR API TYPES
+// =============================================================================
+
+export interface IndicatorDataPoint {
+  x: number; // timestamp
+  y: number | null; // indicator value
+}
+
+export interface BollingerBandsData {
+  upper: IndicatorDataPoint[];
+  middle: IndicatorDataPoint[];
+  lower: IndicatorDataPoint[];
+}
+
+export interface IndicatorsResponse {
+  symbol: string;
+  interval: string;
+  indicators: {
+    [key: string]: IndicatorDataPoint[] | BollingerBandsData;
+  };
+  candle_count?: number;
+  count?: number;
+  last_timestamp?: number;
+  from_cache?: boolean;
+}

@@ -260,7 +260,234 @@ Giao diện web với các tính năng:
 - **Docker** (cho local development)
 - **Python 3.9+** (cho local development)
 
-### 1. Deploy Infrastructure Components
+## 🚀 Triển Khai Lên AWS EKS
+
+### Prerequisites cho AWS EKS
+
+- **AWS CLI** installed và configured với credentials
+- **Terraform >= 1.5.0** installed
+- **kubectl** installed
+- **Helm 3.x** installed
+- **Docker** installed (cho building images)
+- AWS Account với quyền tạo EKS, VPC, IAM resources
+
+### 1. Deploy Infrastructure với Terraform
+
+```bash
+# Navigate to terraform directory
+cd terraform
+
+# Copy và chỉnh sửa terraform.tfvars
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars với các giá trị phù hợp
+
+# Initialize Terraform
+terraform init
+
+# Plan deployment
+terraform plan
+
+# Apply infrastructure
+terraform apply
+
+# Lưu ý: Quá trình này có thể mất 15-20 phút để tạo EKS cluster
+```
+
+Sau khi Terraform hoàn thành, bạn sẽ có:
+- VPC với public và private subnets
+- EKS cluster với managed node groups
+- ECR repositories cho Docker images
+- IAM roles và policies
+- EKS add-ons (ALB Controller, EBS CSI Driver, etc.)
+
+### 2. Setup Kubeconfig
+
+```bash
+# Sử dụng script tự động
+cd scripts
+./setup-kubeconfig.sh [CLUSTER_NAME] [REGION]
+
+# Hoặc manual
+aws eks update-kubeconfig --region ap-southeast-1 --name crypto-eks
+
+# Verify connection
+kubectl cluster-info
+kubectl get nodes
+```
+
+### 3. Build và Push Docker Images lên ECR
+
+```bash
+# Sử dụng script tự động
+cd scripts
+./build-and-push-images.sh [REGION] [CLUSTER_NAME]
+
+# Script sẽ:
+# - Login vào ECR
+# - Build tất cả Docker images
+# - Tag và push lên ECR repositories
+```
+
+Sau khi push images, lấy ECR URLs từ Terraform output:
+```bash
+cd terraform
+terraform output ecr_repository_urls
+```
+
+### 4. Update Kubernetes Manifests với ECR URLs
+
+Cập nhật các file deployment với ECR image URLs:
+
+**backend-deployment.yaml**:
+```yaml
+image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/crypto-eks/crypto-backend-fastapi:latest
+```
+
+**frontend-deployment.yaml**:
+```yaml
+image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/crypto-eks/crypto-frontend-next:latest
+```
+
+**Kafka producer deployments**:
+```yaml
+image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/crypto-eks/crypto-binance-producer:latest
+```
+
+### 5. Update ConfigMap cho AWS Environment
+
+```bash
+cd deploy/k8s_web
+
+# Sử dụng AWS-specific configmap
+cp configmap-aws.yaml.example configmap-aws.yaml
+# Chỉnh sửa với service names phù hợp
+
+kubectl apply -f configmap-aws.yaml
+```
+
+### 6. Deploy Infrastructure Components (MongoDB, Redis, Kafka)
+
+```bash
+# Deploy MongoDB
+cd mongodb
+helm install mongodb . -n crypto-infra --create-namespace
+
+# Deploy Redis
+cd redis
+helm install redis . -n crypto-infra
+
+# Deploy Kafka (Strimzi Operator)
+cd Kafka/strimzi-kafka-operator
+kubectl apply -f install/cluster-operator/
+kubectl wait --for=condition=ready pod -l name=strimzi-cluster-operator -n strimzi-system --timeout=300s
+kubectl apply -f kafka-helm.yaml
+
+# Deploy Prometheus & Grafana
+cd deploy/helm
+./deploy-monitoring.sh
+```
+
+### 7. Deploy Application Components
+
+```bash
+cd deploy/k8s_web
+
+# Tạo namespace
+kubectl apply -f namespace.yaml
+
+# Deploy ConfigMap và Secrets
+kubectl apply -f configmap-aws.yaml
+kubectl apply -f secret.yaml
+
+# Deploy Backend API
+kubectl apply -f backend-deployment.yaml
+kubectl apply -f backend-service.yaml
+
+# Deploy Frontend
+kubectl apply -f frontend-deployment.yaml
+kubectl apply -f frontend-service.yaml
+
+# Deploy Ingress (sử dụng ALB)
+kubectl apply -f ingress.yaml
+```
+
+### 8. Lấy ALB URL
+
+Sau khi Ingress được tạo, ALB sẽ được tạo tự động. Lấy URL:
+
+```bash
+# Đợi ALB được tạo (có thể mất vài phút)
+kubectl get ingress -n crypto-app
+
+# Hoặc lấy từ AWS CLI
+aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(LoadBalancerName, `crypto`)].DNSName' --output text
+```
+
+### 9. Verify Deployment
+
+```bash
+# Check pods
+kubectl get pods -n crypto-app
+kubectl get pods -n crypto-infra
+
+# Check services
+kubectl get svc -n crypto-app
+kubectl get svc -n crypto-infra
+
+# Check ingress
+kubectl get ingress -n crypto-app
+
+# View logs
+kubectl logs -f deployment/backend-fastapi -n crypto-app
+kubectl logs -f deployment/frontend-next -n crypto-app
+```
+
+### 10. Cleanup (Khi cần xóa infrastructure)
+
+```bash
+cd terraform
+
+# Destroy all resources
+terraform destroy
+
+# Lưu ý: Điều này sẽ xóa toàn bộ infrastructure bao gồm:
+# - EKS cluster và node groups
+# - VPC và networking
+# - ECR repositories (images sẽ bị xóa)
+# - IAM roles và policies
+```
+
+### AWS EKS Configuration Notes
+
+- **Node Groups**: Hệ thống sử dụng 3 node groups:
+  - `application`: Cho frontend/backend (t3.large)
+  - `data-processing`: Cho Spark/Kafka workloads (t3.xlarge)
+  - `system`: Cho monitoring/infrastructure (t3.medium)
+
+- **Networking**: 
+  - Worker nodes chạy trong private subnets
+  - ALB trong public subnets
+  - VPC endpoints cho S3/ECR để giảm NAT costs
+
+- **Storage**: 
+  - EBS CSI Driver được cài đặt tự động
+  - Storage classes sẵn có cho persistent volumes
+
+- **Security**:
+  - IAM roles với least privilege
+  - IRSA cho service accounts
+  - Encryption at rest cho EBS volumes
+  - Private subnets cho worker nodes
+
+### Cost Optimization Tips
+
+1. **Sử dụng Spot Instances**: Có thể cấu hình node groups với `capacity_type = "SPOT"` trong terraform.tfvars
+2. **Single NAT Gateway**: Set `single_nat_gateway = true` trong terraform.tfvars để giảm costs
+3. **VPC Endpoints**: Đã được enable để giảm NAT gateway costs
+4. **Cluster Autoscaling**: Tự động scale down khi không sử dụng
+5. **Right-sizing**: Điều chỉnh node instance types và counts phù hợp với workload
+
+### 1. Deploy Infrastructure Components (Minikube/Local)
 
 ```bash
 # Deploy Kafka (Strimzi Operator)
