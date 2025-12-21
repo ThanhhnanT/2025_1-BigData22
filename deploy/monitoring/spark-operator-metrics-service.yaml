@@ -18,3 +18,4 @@ spec:
     app.kubernetes.io/name: spark-kubernetes-operator
     app.kubernetes.io/component: operator-deployment
 
+

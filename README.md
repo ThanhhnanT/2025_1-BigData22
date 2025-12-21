@@ -1,502 +1,404 @@
-# End-to-End Data Pipeline with Batch & Streaming Processing
+# Hệ Thống Xử Lý Dữ Liệu Cryptocurrency - Real-time Trading Platform
 
-This repository contains a **fully integrated, production-ready data pipeline** that supports both **batch** and **streaming** data processing using open-source technologies. It is designed to be easily configured and deployed by any business or individual with minimal modifications.
+Hệ thống xử lý dữ liệu cryptocurrency toàn diện với khả năng xử lý real-time và batch processing, tích hợp Machine Learning để dự đoán giá và phân tích thị trường.
 
-![pipeline](pipeline.png)
+![Workflow](images/WorkFlow.png)
 
-The pipeline incorporates:
+## 📋 Tổng Quan
 
-- **Data Ingestion:**  
-  - **Batch Sources:** SQL databases (MySQL, PostgreSQL), Data Lakes (MinIO as an S3-compatible store), files (CSV, JSON, XML)  
-  - **Streaming Sources:** Kafka for event logs, IoT sensor data, and social media streams
+Dự án này là một hệ thống end-to-end để thu thập, xử lý, lưu trữ và hiển thị dữ liệu cryptocurrency từ Binance Exchange. Hệ thống hỗ trợ:
 
-- **Data Processing & Transformation:**  
-  - **Batch Processing:** Apache Spark for large-scale ETL jobs, integrated with Great Expectations for data quality checks  
-  - **Streaming Processing:** Spark Structured Streaming for real-time data processing and anomaly detection
+- **Real-time Data Streaming**: Thu thập dữ liệu kline, orderbook, và trades từ Binance WebSocket API
+- **Batch Processing**: Xử lý và tổng hợp dữ liệu OHLC theo nhiều khung thời gian (5m, 1h, 4h, 1d)
+- **Machine Learning**: Dự đoán giá cryptocurrency sử dụng Spark ML
+- **Real-time Dashboard**: Giao diện web hiển thị biểu đồ trading, orderbook, và ranking
+- **Monitoring & Observability**: Giám sát hệ thống với Prometheus và Grafana
 
-- **Data Storage:**  
-  - **Raw Data:** Stored in MinIO (S3-compatible storage)  
-  - **Processed Data:** Loaded into PostgreSQL for analytics and reporting
+## 🏗️ Kiến Trúc Hệ Thống
 
-- **Data Quality, Monitoring & Governance:**  
-  - **Data Quality:** Great Expectations validates incoming data  
-  - **Data Governance:** Apache Atlas / OpenMetadata integration (lineage registration)  
-  - **Monitoring & Logging:** Prometheus and Grafana for system monitoring and alerting
+### Workflow Tổng Quan
 
-- **Data Serving & AI/ML Integration:**  
-  - **ML Pipelines:** MLflow for model tracking and feature store integration  
-  - **BI & Dashboarding:** Grafana dashboards provide real-time insights
+![Workflow](images/WorkFlow.png)
 
-- **CI/CD & Deployment:**  
-  - **CI/CD Pipelines:** GitHub Actions or Jenkins for continuous integration and deployment  
-  - **Container Orchestration:** Kubernetes with Argo CD for GitOps deployment
+### Các Thành Phần Chính
 
-### Text-Based Pipeline Diagram
+#### 1. **Data Ingestion Layer**
+- **Kafka Producers**: Thu thập dữ liệu real-time từ Binance WebSocket API
+  - Kline data (1m interval)
+  - Orderbook updates
+  - Market trades
+- **Kafka Topics**: 
+  - `crypto_kline_1m`: Dữ liệu kline 1 phút
+  - `crypto_orderbook`: Dữ liệu orderbook
+  - `crypto_trades`: Dữ liệu giao dịch
 
-```
-                            ┌────────────────────────────────┐
-                            │         Batch Source           │
-                            │(MySQL, Files, User Interaction)│
-                            └────────────────┬───────────────┘
-                                             │
-                                             │  (Extract/Validate)
-                                             ▼
-                           ┌─────────────────────────────────────┐
-                           │      Airflow Batch DAG              │
-                           │ - Extracts data from MySQL          │
-                           │ - Validates with Great Expectations │
-                           │ - Uploads raw data to MinIO         │
-                           └─────────────────┬───────────────────┘
-                                             │ (spark-submit)
-                                             ▼
-                             ┌────────────────────────────────┐
-                             │         Spark Batch Job        │
-                             │ - Reads raw CSV from MinIO     │
-                             │ - Transforms, cleans, enriches │
-                             │ - Writes transformed data to   │
-                             │   PostgreSQL & MinIO           │
-                             └──────────────┬─────────────────┘
-                                            │ (Load/Analyze)
-                                            ▼
-                             ┌────────────────────────────────┐
-                             │       Processed Data Store     │
-                             │ (PostgreSQL, MongoDB, AWS S3)  │
-                             └───────────────┬────────────────┘
-                                             │ (Query/Analyze)
-                                             ▼
-                             ┌────────────────────────────────┐
-                             │         Cache & Indexing       │
-                             │     (Elasticsearch, Redis)     │
-                             └────────────────────────────────┘
+#### 2. **Data Processing Layer**
+- **Apache Spark**: 
+  - **Batch Processing**: Tổng hợp OHLC data (5m, 1h, 4h, 1d) từ dữ liệu 1m
+  - **Streaming Processing**: Xử lý real-time để tính toán ranking và metrics
+  - **ML Pipeline**: Training và prediction model cho giá cryptocurrency
+- **Apache Airflow**: Orchestration và scheduling cho các Spark jobs
 
-Streaming Side:
-                              ┌─────────────────────────────┐
-                              │       Streaming Source      │
-                              │         (Kafka)             │
-                              └────────────┬────────────────┘
-                                           │
-                                           ▼
-                           ┌───────────────────────────────────┐
-                           │    Spark Streaming Job            │
-                           │ - Consumes Kafka messages         │
-                           │ - Filters and detects anomalies   │
-                           │ - Persists anomalies to           │
-                           │   PostgreSQL & MinIO              │
-                           └───────────────────────────────────┘
+#### 3. **Data Storage Layer**
+- **MongoDB**: Lưu trữ dữ liệu lịch sử OHLC đã được tổng hợp
+- **Redis**: Cache dữ liệu real-time cho frontend
+  - Latest kline data
+  - Orderbook snapshots
+  - Market trades
+  - Ranking data
+  - ML predictions
 
-Monitoring & Governance:
-                              ┌────────────────────────────────┐
-                              │       Monitoring &             │
-                              │  Data Governance Layer         │
-                              │ - Prometheus & Grafana         │
-                              │ - Apache Atlas / OpenMetadata  │
-                              └────────────────────────────────┘
+#### 4. **API & Backend Layer**
+- **FastAPI**: RESTful API và WebSocket server
+  - REST endpoints cho historical data
+  - WebSocket streams cho real-time updates
+  - ML prediction endpoints
 
-ML & Serving:
-                              ┌──────────────────────────────┐
-                              │        AI/ML Serving         │
-                              │ - Feature Store (Feast)      │
-                              │ - MLflow Model Tracking      │
-                              │ - Model training & serving   │
-                              │ - BI Dashboards              │
-                              └──────────────────────────────┘
+#### 5. **Frontend Layer**
+- **Next.js**: Trading dashboard với các tính năng:
+  - Real-time candlestick charts
+  - Orderbook visualization
+  - Market trades feed
+  - Coin ranking (top gainers/losers)
+  - ML predictions display
 
-CI/CD & Terraform:
-                              ┌──────────────────────────────┐
-                              │        CI/CD Pipelines       │
-                              │ - GitHub Actions / Jenkins   │
-                              │ - Terraform for Cloud Deploy │
-                              └──────────────────────────────┘
+#### 6. **Monitoring Layer**
+- **Prometheus**: Metrics collection
+- **Grafana**: Visualization và alerting
 
-Container Orchestration:
-                              ┌──────────────────────────────┐
-                              │       Kubernetes Cluster     │
-                              │ - Argo CD for GitOps         │
-                              │ - Helm Charts for Deployment │
-                              └──────────────────────────────┘
-```
+### System Dashboard
 
-### Full Flow Diagram with Backend & Frontend Integration (Optional)
+![System Dashboard](images/SysTemDashBoard.png)
 
-A more detailed flow diagram that includes backend and frontend integration is available in the `assets/` directory. This diagram illustrates how the data pipeline components interact with each other and with external systems, including data sources, storage, processing, visualization, and monitoring. 
-
-Although the frontend & backend integration is not included in this repository (since it's supposed to only contain the pipeline), you can easily integrate it with your existing frontend application or create a new one using popular frameworks like React, Angular, or Vue.js.
-
-<p align="center">
-  <img src="assets/full_flow_diagram.png" alt="Full Flow Diagram" width="100%"/>
-</p>
-
-### Docker Services Architecture
-
-```mermaid
-graph TB
-    subgraph "Docker Compose Stack"
-        subgraph "Data Sources"
-            MYSQL[MySQL<br/>Port: 3306]
-            KAFKA[Kafka<br/>Port: 9092]
-            ZK[Zookeeper<br/>Port: 2181]
-        end
-
-        subgraph "Processing"
-            AIR[Airflow<br/>Webserver:8080<br/>Scheduler]
-            SPARK[Spark<br/>Master/Worker]
-        end
-
-        subgraph "Storage"
-            MINIO[MinIO<br/>API: 9000<br/>Console: 9001]
-            PG[PostgreSQL<br/>Port: 5432]
-        end
-
-        subgraph "Monitoring"
-            PROM[Prometheus<br/>Port: 9090]
-            GRAF[Grafana<br/>Port: 3000]
-        end
-
-        KAFKA --> ZK
-        AIR --> MYSQL
-        AIR --> PG
-        AIR --> SPARK
-        SPARK --> MINIO
-        SPARK --> PG
-        SPARK --> KAFKA
-        PROM --> AIR
-        PROM --> SPARK
-        GRAF --> PROM
-    end
-```
-
-### ML Pipeline Flow
-
-```mermaid
-flowchart LR
-    subgraph "Feature Engineering"
-        RAW[Raw Data] --> FE[Feature<br/>Extraction]
-        FE --> FS[Feature Store<br/>Feast]
-    end
-
-    subgraph "Model Training"
-        FS --> TRAIN[Training<br/>Pipeline]
-        TRAIN --> VAL[Validation]
-        VAL --> MLF[MLflow<br/>Registry]
-    end
-
-    subgraph "Model Serving"
-        MLF --> DEPLOY[Model<br/>Deployment]
-        DEPLOY --> API[Prediction<br/>API]
-        API --> APP[Applications]
-    end
-
-    subgraph "Monitoring"
-        API --> METRICS[Performance<br/>Metrics]
-        METRICS --> DRIFT[Drift<br/>Detection]
-        DRIFT --> RETRAIN[Retrigger<br/>Training]
-    end
-
-    RETRAIN --> TRAIN
-```
-
-## Directory Structure
+## 📁 Cấu Trúc Thư Mục
 
 ```
-end-to-end-pipeline/
-  ├── .devcontainer/                 # VS Code Dev Container settings
-  ├── docker-compose.yaml            # Docker orchestration for all services
-  ├── docker-compose.ci.yaml         # Docker Compose for CI/CD pipelines
-  ├── End_to_End_Data_Pipeline.ipynb # Jupyter notebook for pipeline overview
-  ├── requirements.txt               # Python dependencies for scripts
-  ├── .gitignore                     # Standard Git ignore file
-  ├── README.md                      # Comprehensive documentation (this file)
-  ├── airflow/
-  │   ├── Dockerfile                 # Custom Airflow image with dependencies
-  │   ├── requirements.txt           # Python dependencies for Airflow
-  │   └── dags/
-  │       ├── batch_ingestion_dag.py # Batch pipeline DAG
-  │       └── streaming_monitoring_dag.py  # Streaming monitoring DAG
-  ├── spark/
-  │   ├── Dockerfile                 # Custom Spark image with Kafka and S3 support
-  │   ├── spark_batch_job.py         # Spark batch ETL job
-  │   └── spark_streaming_job.py     # Spark streaming job
-  ├── kafka/
-  │   └── producer.py                # Kafka producer for simulating event streams
-  ├── storage/
-  │   ├── aws_s3_influxdb.py         # S3-InfluxDB integration stub
-  │   ├── hadoop_batch_processing.py  # Hadoop batch processing stub
-  │   └── mongodb_streaming.py       # MongoDB streaming integration stub
-  ├── great_expectations/
-  │   ├── great_expectations.yaml    # GE configuration
-  │   └── expectations/
-  │       └── raw_data_validation.py # GE suite for data quality
-  ├── governance/
-  │   └── atlas_stub.py              # Dataset lineage registration with Atlas/OpenMetadata
-  ├── monitoring/
-  │   ├── monitoring.py              # Python script to set up Prometheus & Grafana
-  │   └── prometheus.yml             # Prometheus configuration file
-  ├── ml/
-  │   ├── feature_store_stub.py      # Feature Store integration stub
-  │   └── mlflow_tracking.py         # MLflow model tracking
-  ├── kubernetes/
-  │   ├── argo-app.yaml              # Argo CD application manifest
-  │   └── deployment.yaml            # Kubernetes deployment manifest
-  ├── terraform/                     # Terraform scripts for cloud deployment
-  └── scripts/
-      └── init_db.sql                # SQL script to initialize MySQL and demo data
+CRYPTO/
+├── airflow/                    # Apache Airflow orchestration
+│   ├── dags/                   # DAG definitions
+│   │   ├── ohlc_spark_aggregator.py
+│   │   ├── ml_prediction_dag.py
+│   │   └── redis_clear_and_history_fetch_dag.py
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── backend_fastapi/            # FastAPI backend
+│   ├── app/
+│   │   ├── main.py             # API endpoints & WebSocket
+│   │   ├── config.py           # Configuration
+│   │   ├── schemas.py          # Pydantic models
+│   │   └── kafka_manager.py    # Kafka consumer manager
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── frontend/                   # Next.js frontend
+│   ├── app/                    # Next.js app directory
+│   ├── components/
+│   │   ├── charts/             # Trading charts components
+│   │   │   ├── TradingDashboard.tsx
+│   │   │   └── ChartEmbedded.tsx
+│   │   └── ui/                 # UI components
+│   ├── Dockerfile
+│   └── package.json
+│
+├── Kafka/                      # Kafka producers
+│   ├── binance_producer.py     # Kline data producer
+│   ├── binance_orderbook_trades_producer.py
+│   ├── redis_consumer.py       # Consumer to Redis
+│   └── requirements.txt
+│
+├── Spark/                      # Apache Spark jobs
+│   ├── batch/                  # Batch processing scripts
+│   │   ├── ohlc_5m_aggregator.py
+│   │   ├── ohlc_1h_aggregator.py
+│   │   ├── ohlc_4h_aggregator.py
+│   │   ├── ohlc_1d_aggregator.py
+│   │   └── train_price_prediction.py
+│   ├── ranking_coins/          # Ranking calculation
+│   ├── apps/                    # SparkApplication YAMLs
+│   └── Dockerfile
+│
+├── mongodb/                    # MongoDB Helm chart
+├── redis/                      # Redis Helm chart
+├── Prometheus/                 # Prometheus Helm chart
+│
+├── deploy/                     # Deployment configurations
+│   ├── k8s_web/                # Kubernetes manifests
+│   │   ├── frontend-deployment.yaml
+│   │   ├── backend-deployment.yaml
+│   │   └── ingress.yaml
+│   └── helm/                   # Helm deployment scripts
+│
+└── images/                     # Documentation images
+    ├── WorkFlow.png
+    ├── Chart.png
+    ├── rank.png
+    └── SysTemDashBoard.png
 ```
 
-## Components & Technologies
+## 🚀 Tính Năng Chính
 
-- **Ingestion & Orchestration:**  
-  - [Apache Airflow](https://airflow.apache.org/) – Schedules batch and streaming jobs.
-  - [Kafka](https://kafka.apache.org/) – Ingests streaming events.
-  - [Spark](https://spark.apache.org/) – Processes batch and streaming data.
+### 1. Real-time Data Streaming
 
-- **Storage & Processing:**  
-  - [MinIO](https://min.io/) – S3-compatible data lake.
-  - [PostgreSQL](https://www.postgresql.org/) – Stores transformed and processed data.
-  - [Great Expectations](https://greatexpectations.io/) – Enforces data quality.
-  - [AWS S3](https://aws.amazon.com/s3/) – Cloud storage integration.
-  - [InfluxDB](https://www.influxdata.com/) – Time-series data storage.
-  - [MongoDB](https://www.mongodb.com/) – NoSQL database integration.
-  - [Hadoop](https://hadoop.apache.org/) – Big data processing integration.
+Hệ thống thu thập dữ liệu real-time từ Binance:
+- **Kline Data**: Dữ liệu nến 1 phút cho 15+ cryptocurrency pairs
+- **Orderbook**: Order book depth với updates real-time
+- **Market Trades**: Lịch sử giao dịch real-time
 
-- **Monitoring & Governance:**  
-  - [Prometheus](https://prometheus.io/) – Metrics collection.
-  - [Grafana](https://grafana.com/) – Dashboard visualization.
-  - [Apache Atlas/OpenMetadata](https://atlas.apache.org/) – Data lineage and governance.
+### 2. Batch Processing & Aggregation
 
-- **ML & Data Serving:**  
-  - [MLflow](https://mlflow.org/) – Experiment tracking.
-  - [Feast](https://feast.dev/) – Feature store for machine learning.
-  - [BI Tools](https://grafana.com/) – Real-time dashboards and insights.
+Spark batch jobs tổng hợp dữ liệu từ 1m interval thành các khung thời gian lớn hơn:
+- 5 phút (5m)
+- 1 giờ (1h)
+- 4 giờ (4h)
+- 1 ngày (1d)
 
-## Setup Instructions
+### 3. Machine Learning Predictions
+
+![Chart](images/Chart.png)
+
+Hệ thống ML sử dụng Spark ML Linear Regression để dự đoán:
+- Giá cryptocurrency trong 5 phút tiếp theo
+- Hướng biến động (tăng/giảm)
+- Confidence score
+
+### 4. Coin Ranking System
+
+![Ranking](images/rank.png)
+
+Tính toán và hiển thị ranking các coin:
+- Top Gainers: Coin tăng giá nhiều nhất
+- Top Losers: Coin giảm giá nhiều nhất
+- Metrics: Percent change, volume, market cap
+
+### 5. Real-time Trading Dashboard
+
+Giao diện web với các tính năng:
+- Interactive candlestick charts
+- Real-time orderbook visualization
+- Market trades feed
+- Coin ranking table
+- ML predictions display
+
+## 🛠️ Công Nghệ Sử Dụng
+
+### Data Processing
+- **Apache Kafka**: Message streaming platform
+- **Apache Spark**: Distributed data processing
+  - Spark SQL
+  - Spark MLlib
+  - Spark Structured Streaming
+- **Apache Airflow**: Workflow orchestration
+
+### Storage
+- **MongoDB**: Document database cho historical data
+- **Redis**: In-memory cache cho real-time data
+
+### Backend
+- **FastAPI**: High-performance Python web framework
+- **WebSocket**: Real-time bidirectional communication
+- **Pydantic**: Data validation
+
+### Frontend
+- **Next.js**: React framework với SSR
+- **TypeScript**: Type-safe JavaScript
+- **Chart.js / TradingView**: Charting libraries
+- **Tailwind CSS**: Utility-first CSS framework
+
+### Infrastructure
+- **Kubernetes**: Container orchestration
+- **Docker**: Containerization
+- **Helm**: Kubernetes package manager
+- **Prometheus**: Metrics monitoring
+- **Grafana**: Visualization và alerting
+
+## 📦 Cài Đặt & Triển Khai
 
 ### Prerequisites
 
-- **Docker** and **Docker Compose** must be installed.
-- Ensure that **Python 3.9+** is installed locally if you want to run scripts outside of Docker.
-- Open ports required:  
-  - Airflow: 8080  
-  - MySQL: 3306  
-  - PostgreSQL: 5432  
-  - MinIO: 9000 (and console on 9001)  
-  - Kafka: 9092  
-  - Prometheus: 9090  
-  - Grafana: 3000  
+- Kubernetes cluster (Minikube hoặc cloud K8s)
+- kubectl configured
+- Helm 3.x
+- Docker (cho local development)
 
-### Step-by-Step Guide
+### 1. Deploy Infrastructure Components
 
-1. **Clone the Repository**
+```bash
+# Deploy Kafka (Strimzi Operator)
+cd Kafka/strimzi-kafka-operator
+kubectl apply -f install/cluster-operator/
 
-   ```bash
-   git clone https://github.com/hoangsonww/End-to-End-Data-Pipeline.git
-   cd End-to-End-Data-Pipeline
-   ```
+# Deploy MongoDB
+cd mongodb
+helm install mongodb . -n crypto-infra --create-namespace
 
-2. **Start the Pipeline Stack**
+# Deploy Redis
+cd redis
+helm install redis . -n crypto-infra
 
-   Use Docker Compose to launch all components:
-   
-   ```bash
-   docker-compose up --build
-   ```
-   
-   This command will:
-   - Build custom Docker images for Airflow and Spark.
-   - Start MySQL, PostgreSQL, Kafka (with Zookeeper), MinIO, Prometheus, Grafana, and Airflow webserver.
-   - Initialize the MySQL database with demo data (via `scripts/init_db.sql`).
-
-3. **Access the Services**
-   - **Airflow UI:** [http://localhost:8080](http://localhost:8080)  
-     Set up connections:  
-     - `mysql_default` → Host: `mysql`, DB: `source_db`, User: `user`, Password: `pass`
-     - `postgres_default` → Host: `postgres`, DB: `processed_db`, User: `user`, Password: `pass`
-   - **MinIO Console:** [http://localhost:9001](http://localhost:9001) (User: `minio`, Password: `minio123`)
-   - **Kafka:** Accessible on port `9092`
-   - **Prometheus:** [http://localhost:9090](http://localhost:9090)
-   - **Grafana:** [http://localhost:3000](http://localhost:3000) (Default login: `admin/admin`)
-
-4. **Run Batch Pipeline**
-   - In the Airflow UI, enable the `batch_ingestion_dag` to run the end-to-end batch pipeline.
-   - This DAG extracts data from MySQL, validates it, uploads raw data to MinIO, triggers a Spark job for transformation, and loads data into PostgreSQL.
-
-5. **Run Streaming Pipeline**
-   - Open a terminal and start the Kafka producer:
-     ```bash
-     docker-compose exec kafka python /opt/spark_jobs/../kafka/producer.py
-     ```
-   - In another terminal, run the Spark streaming job:
-     ```bash
-     docker-compose exec spark spark-submit --master local[2] /opt/spark_jobs/spark_streaming_job.py
-     ```
-   - The streaming job consumes events from Kafka, performs real-time anomaly detection, and writes results to PostgreSQL and MinIO.
-
-6. **Monitoring & Governance**
-   - **Prometheus & Grafana:**  
-     Use the `monitoring.py` script (or access Grafana) to view real-time metrics and dashboards.
-   - **Data Lineage:**  
-     The `governance/atlas_stub.py` script registers lineage between datasets (can be extended for full Apache Atlas integration).
-
-7. **ML & Feature Store**
-   - Use `ml/mlflow_tracking.py` to simulate model training and tracking.
-   - Use `ml/feature_store_stub.py` to integrate with a feature store like Feast.
-
-8. **CI/CD & Deployment**
-    - Use the `docker-compose.ci.yaml` file to set up CI/CD pipelines.
-    - Use the `kubernetes/` directory for Kubernetes deployment manifests.
-    - Use the `terraform/` directory for cloud deployment scripts.
-    - Use the `.github/workflows/` directory for GitHub Actions CI/CD workflows.
-
-### Next Steps
-
-Congratulations! You have successfully set up the end-to-end data pipeline with batch and streaming processing. However, this is a very general pipeline that needs to be customized for your specific use case.
-
-> [!IMPORTANT]
-> Note: Be sure to visit the files and scripts in the repository and change the credentials, configurations, and logic to match your environment and use case. Feel free to extend the pipeline with additional components, services, or integrations as needed.
-
-## Configuration & Customization
-
-- **Docker Compose:**  
-  All services are defined in `docker-compose.yaml`. Adjust resource limits, environment variables, and service dependencies as needed.
-
-- **Airflow:**  
-  Customize DAGs in the `airflow/dags/` directory. Use the provided PythonOperators to integrate custom processing logic.
-
-- **Spark Jobs:**  
-  Edit transformation logic in `spark/spark_batch_job.py` and `spark/spark_streaming_job.py` to match your data and processing requirements.
-
-- **Kafka Producer:**  
-  Modify `kafka/producer.py` to simulate different types of events or adjust the batch size and frequency using environment variables.
-
-- **Monitoring:**  
-  Update `monitoring/monitoring.py` and `prometheus.yml` to scrape additional metrics or customize dashboards. Place Grafana dashboard JSON files in the `monitoring/grafana_dashboards/` directory.
-
-- **Governance & ML:**  
-  Replace stub implementations in `governance/atlas_stub.py` and `ml/` with real integrations as needed.
-
-- **CI/CD & Deployment:**  
-  Customize CI/CD workflows in `.github/workflows/` and deployment manifests in `kubernetes/` and `terraform/` for your cloud environment.
-
-- **Storage:**
-
-    Data storage options are in the `storage/` directory with AWS S3, InfluxDB, MongoDB, and Hadoop stubs. Replace these with real integrations or credentials as needed.
-
-## Example Applications
-
-```mermaid
-mindmap
-  root((Data Pipeline<br/>Use Cases))
-    E-Commerce
-      Real-Time Recommendations
-        Clickstream Processing
-        User Behavior Analysis
-        Personalized Content
-      Fraud Detection
-        Transaction Monitoring
-        Pattern Recognition
-        Risk Scoring
-    Finance
-      Risk Analysis
-        Credit Assessment
-        Portfolio Analytics
-        Market Risk
-      Trade Surveillance
-        Market Data Processing
-        Compliance Monitoring
-        Anomaly Detection
-    Healthcare
-      Patient Monitoring
-        IoT Sensor Data
-        Real-time Alerts
-        Predictive Analytics
-      Clinical Trials
-        Data Integration
-        Outcome Prediction
-        Drug Efficacy Analysis
-    IoT/Manufacturing
-      Predictive Maintenance
-        Sensor Analytics
-        Failure Prediction
-        Maintenance Scheduling
-      Supply Chain
-        Inventory Optimization
-        Logistics Tracking
-        Demand Forecasting
-    Media
-      Sentiment Analysis
-        Social Media Streams
-        Brand Monitoring
-        Trend Detection
-      Ad Fraud Detection
-        Click Pattern Analysis
-        Bot Detection
-        Campaign Analytics
+# Deploy Prometheus & Grafana
+cd deploy/helm
+./deploy-monitoring.sh
 ```
 
-### E-Commerce & Retail
-- **Real-Time Recommendations:**
-  Process clickstream data to generate personalized product recommendations.
-- **Fraud Detection:**
-  Detect unusual purchasing patterns or multiple high-value transactions in real-time.
+### 2. Deploy Application Components
 
-### Financial Services & Banking
-- **Risk Analysis:**
-  Aggregate transaction data to assess customer credit risk.
-- **Trade Surveillance:**
-  Monitor market data and employee trades for insider trading signals.
+```bash
+# Deploy Backend API
+cd deploy/k8s_web
+kubectl apply -f namespace.yaml
+kubectl apply -f configmap.yaml
+kubectl apply -f secret.yaml
+kubectl apply -f backend-deployment.yaml
+kubectl apply -f backend-service.yaml
 
-### Healthcare & Life Sciences
-- **Patient Monitoring:**
-  Process sensor data from medical devices to alert healthcare providers of critical conditions.
-- **Clinical Trial Analysis:**
-  Analyze historical trial data for predictive analytics in treatment outcomes.
+# Deploy Frontend
+kubectl apply -f frontend-deployment.yaml
+kubectl apply -f frontend-service.yaml
 
-### IoT & Manufacturing
-- **Predictive Maintenance:**
-  Monitor sensor data from machinery to predict failures before they occur.
-- **Supply Chain Optimization:**
-  Aggregate data across manufacturing processes to optimize production and logistics.
+# Deploy Ingress
+kubectl apply -f ingress.yaml
+```
 
-### Media & Social Networks
-- **Sentiment Analysis:**
-  Analyze social media feeds in real-time to gauge public sentiment on new releases.
-- **Ad Fraud Detection:**
-  Identify and block fraudulent clicks on digital advertisements.
+### 3. Start Data Producers
 
-Feel free to use this pipeline as a starting point for your data processing needs. Extend it with additional components, services, or integrations to build a robust, end-to-end data platform.
+```bash
+# Start Kafka producers
+cd Kafka
+python binance_producer.py &
+python binance_orderbook_trades_producer.py &
+python redis_consumer.py &
+```
 
-## Troubleshooting & Further Considerations
+### 4. Start Airflow DAGs
 
-- **Service Not Starting:**  
-  Check Docker logs (`docker-compose logs`) to troubleshoot errors with MySQL, Kafka, Airflow, or Spark.
-- **Airflow Connection Issues:**  
-  Verify that connection settings (host, user, password) in the Airflow UI match those in `docker-compose.yaml`.
-- **Data Quality Errors:**  
-  Inspect Great Expectations logs in the Airflow DAG runs to adjust expectations and clean data.
-- **Resource Constraints:**  
-  For production use, consider scaling out services (e.g., running Spark on a dedicated cluster, using managed Kafka).
+Truy cập Airflow UI và enable các DAGs:
+- `ohlc_5m_spark_aggregator`
+- `ohlc_1h_spark_aggregator`
+- `ohlc_4h_spark_aggregator`
+- `ohlc_1d_spark_aggregator`
+- `ml_prediction_dag`
 
-## Contributing
+## 🔧 Cấu Hình
 
-Contributions, issues, and feature requests are welcome!
+### Environment Variables
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-6. We will review your changes and merge them into the main branch upon approval.
+**Backend (FastAPI)**:
+```bash
+MONGO_URI=mongodb://mongodb:27017
+MONGO_DB=CRYPTO
+REDIS_HOST=redis
+REDIS_PORT=6379
+KAFKA_BOOTSTRAP=my-cluster-kafka-bootstrap:9092
+```
 
-## License
+**Kafka Producers**:
+```bash
+KAFKA_BROKER=my-cluster-kafka-bootstrap.crypto-infra:9092
+KAFKA_TOPIC=crypto_kline_1m
+```
 
-This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
+### MongoDB Collections
 
-## Final Notes
+- `5m_kline`: OHLC data 5 phút
+- `1h_kline`: OHLC data 1 giờ
+- `4h_kline`: OHLC data 4 giờ
+- `1d_kline`: OHLC data 1 ngày
+- `predictions`: ML prediction results
 
-> [!NOTE]
-> This end-to-end data pipeline is designed for rapid deployment and customization. With minor configuration changes, it can be adapted to many business cases—from real-time analytics and fraud detection to predictive maintenance and advanced ML model training. Enjoy building a data-driven future with this pipeline!
+### Redis Keys
+
+- `crypto:{symbol}:1m:latest`: Latest kline data
+- `crypto:{symbol}:1m:{timestamp}`: Historical kline data
+- `orderbook:{symbol}:latest`: Orderbook snapshot
+- `trades:{symbol}:list`: Market trades list
+- `ranking:top_gainers`: Coin ranking data
+- `crypto:prediction:{symbol}`: ML predictions
+
+## 📊 API Endpoints
+
+### REST API
+
+- `GET /ohlc`: Lấy dữ liệu OHLC historical từ MongoDB
+- `GET /ohlc/realtime`: Lấy dữ liệu OHLC real-time từ Redis
+- `GET /latest`: Lấy latest kline data
+- `GET /orderbook`: Lấy orderbook snapshot
+- `GET /trades`: Lấy market trades
+- `GET /ranking/top-gainers`: Lấy coin ranking
+- `GET /prediction/{symbol}`: Lấy ML prediction
+
+### WebSocket
+
+- `WS /ws/kline?symbol=BTCUSDT`: Real-time kline stream
+- `WS /ws/orderbook?symbol=BTCUSDT`: Real-time orderbook stream
+- `WS /ws/trades?symbol=BTCUSDT`: Real-time trades stream
+
+## 🧪 Testing
+
+```bash
+# Test Backend API
+cd backend_fastapi
+python test_api.py
+
+# Test Kafka Producer
+cd Kafka
+python binance_producer.py
+
+# Test Spark Jobs locally
+cd Spark/batch
+python ohlc_5m_aggregator.py
+```
+
+## 📈 Monitoring
+
+### Prometheus Metrics
+
+- Kafka producer/consumer lag
+- Spark job execution time
+- API request latency
+- Redis memory usage
+- MongoDB connection pool
+
+### Grafana Dashboards
+
+Truy cập Grafana tại `http://localhost:3000` để xem:
+- System metrics
+- Application performance
+- Data pipeline health
+
+## 🔍 Troubleshooting
+
+### Kafka không nhận được dữ liệu
+- Kiểm tra Kafka broker connectivity
+- Verify WebSocket connection to Binance
+- Check producer logs
+
+### Spark jobs fail
+- Kiểm tra Spark operator logs
+- Verify MongoDB connection
+- Check resource limits
+
+### Frontend không hiển thị data
+- Kiểm tra WebSocket connection
+- Verify Redis có dữ liệu
+- Check backend API health
+
+## 📝 License
+
+MIT License
+
+## 👥 Contributors
+
+- Development Team
+
+## 🙏 Acknowledgments
+
+- Binance API for market data
+- Apache Foundation for open-source tools
+- TradingView for charting inspiration
 
 ---
 
-Thanks for reading! If you found this repository helpful, please star it and share it with others. For questions, feedback, or suggestions, feel free to reach out to me on [GitHub](https://github.com/hoangsonww).
+**Lưu ý**: Đây là dự án học tập và nghiên cứu. Không sử dụng cho mục đích trading thực tế mà không có proper risk management.
 
-[**⬆️ Back to top**](#end-to-end-data-pipeline-with-batch--streaming-processing)
+[**⬆️ Back to top**](#hệ-thống-xử-lý-dữ-liệu-cryptocurrency---real-time-trading-platform)

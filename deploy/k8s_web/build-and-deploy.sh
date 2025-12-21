@@ -71,6 +71,8 @@ deploy_frontend() {
     # Use minikube's Docker daemon
     eval $(minikube docker-env)
     
+    # Don't set NEXT_PUBLIC_API_URL in build - let frontend code fallback to http://crypto.local/api
+    # This allows the code to work both in browser (via ingress) and in cluster (via service)
     FRONTEND_IMAGE="crypto-frontend-next:local"
     docker build -t ${FRONTEND_IMAGE} .
     
