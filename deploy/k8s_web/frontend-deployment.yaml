@@ -15,8 +15,10 @@ spec:
     spec:
       containers:
         - name: frontend-next
+          # Update this with your ECR repository URL after running terraform
+          # Example: image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/crypto-eks/crypto-frontend-next:latest
           image: crypto-frontend-next:local
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           resources:

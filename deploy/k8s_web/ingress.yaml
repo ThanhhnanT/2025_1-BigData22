@@ -3,11 +3,17 @@ kind: Ingress
 metadata:
   name: crypto-frontend-ingress
   namespace: crypto-app
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # Uncomment and configure if using ACM certificate
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:REGION:ACCOUNT:certificate/CERT_ID
 spec:
-  ingressClassName: nginx
+  ingressClassName: alb
   rules:
-    - host: crypto.local
-      http:
+    - http:
         paths:
           - path: /
             pathType: Prefix
@@ -23,20 +29,23 @@ metadata:
   name: crypto-backend-ingress
   namespace: crypto-app
   annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/conditions.backend-fastapi-service: |
+      [{"field":"path-pattern","pathPatternConfig":{"values":["/api/*"]}}]
     # WebSocket support
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/websocket-services: "backend-fastapi-service"
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    # Uncomment and configure if using ACM certificate
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:REGION:ACCOUNT:certificate/CERT_ID
 spec:
-  ingressClassName: nginx
+  ingressClassName: alb
   rules:
-    - host: crypto.local
-      http:
+    - http:
         paths:
-          - path: /api(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /api
+            pathType: Prefix
             backend:
               service:
                 name: backend-fastapi-service

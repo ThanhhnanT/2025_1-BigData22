@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crypto-config
+  namespace: crypto-app
+data:
+  APP_ENV: "aws-eks"
+  # Update with your Kafka service name and port
+  # Example: KAFKA_BOOTSTRAP: "my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092"
+  KAFKA_BOOTSTRAP: "my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092"
+
+  # Update with your Redis service name
+  # Example: REDIS_HOST: "redis-master.crypto-infra.svc.cluster.local"
+  REDIS_HOST: "redis-master.crypto-infra.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_PASSWORD: ""  # Update if Redis has password
+
+  # MONGO_URI moved to Secret for security
+  MONGO_DB: "CRYPTO"
+  MONGO_COLLECTION_OHLC: "5m_kline"
+

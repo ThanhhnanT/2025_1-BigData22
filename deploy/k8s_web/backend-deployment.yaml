@@ -15,8 +15,10 @@ spec:
     spec:
       containers:
         - name: backend-fastapi
+          # Update this with your ECR repository URL after running terraform
+          # Example: image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/crypto-eks/crypto-backend-fastapi:latest
           image: crypto-backend-fastapi:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           envFrom:
