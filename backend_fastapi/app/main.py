@@ -1,6 +1,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Optional
 
 import redis.asyncio as redis
@@ -13,7 +14,8 @@ from .schemas import (
     Candle, LatestKline, OHLCResponse,
     OrderBookResponse, OrderBookEntry, TradesResponse, Trade,
     Prediction, PredictionResponse, PredictionsListResponse,
-    PredictionHistory, PredictionHistoryResponse
+    PredictionHistory, PredictionHistoryResponse,
+    RankingResponse, CoinRanking
 )
 from .kafka_manager import SharedKafkaManager
 
@@ -238,32 +240,68 @@ async def get_orderbook(
     if not raw:
         raise HTTPException(status_code=404, detail=f"No order book data for {symbol}")
     
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Invalid JSON data in Redis for {symbol}: {str(e)}"
+        )
     
     # Process bids and asks, calculate totals, and limit results
     bids_raw = data.get("bids", [])
     asks_raw = data.get("asks", [])
     
+    # Validate data format
+    if not isinstance(bids_raw, list) or not isinstance(asks_raw, list):
+        raise HTTPException(
+            status_code=500,
+            detail=f"Invalid data format in Redis for {symbol}: bids and asks must be lists"
+        )
+    
     # Calculate cumulative totals for bids (descending) and asks (ascending)
     bids = []
     bids_total = 0.0
-    for i, (price, qty) in enumerate(bids_raw[:limit]):
-        bids_total += qty * price
-        bids.append(OrderBookEntry(
-            price=price,
-            quantity=qty,
-            total=bids_total
-        ))
+    try:
+        for i, level in enumerate(bids_raw[:limit]):
+            if not isinstance(level, list) or len(level) < 2:
+                continue
+            price = float(level[0])
+            qty = float(level[1])
+            bids_total += qty * price
+            bids.append(OrderBookEntry(
+                price=price,
+                quantity=qty,
+                total=bids_total
+            ))
+    except (ValueError, TypeError, IndexError) as e:
+        print(f"Error processing bids for {symbol}: {e}")
+        print(f"Bids raw data: {bids_raw[:5] if bids_raw else 'empty'}")
     
     asks = []
     asks_total = 0.0
-    for i, (price, qty) in enumerate(asks_raw[:limit]):
-        asks_total += qty * price
-        asks.append(OrderBookEntry(
-            price=price,
-            quantity=qty,
-            total=asks_total
-        ))
+    try:
+        for i, level in enumerate(asks_raw[:limit]):
+            if not isinstance(level, list) or len(level) < 2:
+                continue
+            price = float(level[0])
+            qty = float(level[1])
+            asks_total += qty * price
+            asks.append(OrderBookEntry(
+                price=price,
+                quantity=qty,
+                total=asks_total
+            ))
+    except (ValueError, TypeError, IndexError) as e:
+        print(f"Error processing asks for {symbol}: {e}")
+        print(f"Asks raw data: {asks_raw[:5] if asks_raw else 'empty'}")
+    
+    # Log warning if data is empty
+    if len(bids) == 0 and len(asks) == 0:
+        print(f"⚠️ Warning: Empty order book data for {symbol} from Redis")
+        print(f"Raw data keys: {list(data.keys())}")
+        print(f"Bids raw type: {type(bids_raw)}, length: {len(bids_raw) if isinstance(bids_raw, list) else 'N/A'}")
+        print(f"Asks raw type: {type(asks_raw)}, length: {len(asks_raw) if isinstance(asks_raw, list) else 'N/A'}")
     
     return OrderBookResponse(
         symbol=symbol,
@@ -396,61 +434,186 @@ async def ws_orderbook(
         key = f"orderbook:{symbol}:latest"
         raw = await redis_client.get(key)
         if raw:
-            data = json.loads(raw)
-            bids_raw = data.get("bids", [])
-            asks_raw = data.get("asks", [])
-            
-            # Calculate totals
-            bids = []
-            bids_total = 0.0
-            for price, qty in bids_raw[:20]:
-                bids_total += qty * price
-                bids.append({"price": price, "quantity": qty, "total": bids_total})
-            
-            asks = []
-            asks_total = 0.0
-            for price, qty in asks_raw[:20]:
-                asks_total += qty * price
-                asks.append({"price": price, "quantity": qty, "total": asks_total})
-            
             try:
-                await websocket.send_json({
-                    "type": "initial",
-                    "symbol": symbol,
-                    "bids": bids,
-                    "asks": asks,
-                    "timestamp": data.get("timestamp")
-                })
-            except (RuntimeError, WebSocketDisconnect) as send_err:
-                print(f"Error sending initial orderbook data: {send_err}")
-                raise  # Re-raise to close connection properly
+                data = json.loads(raw)
+            except json.JSONDecodeError as e:
+                print(f"Error parsing orderbook JSON from Redis for {symbol}: {e}")
+                data = None
+            
+            if data:
+                bids_raw = data.get("bids", [])
+                asks_raw = data.get("asks", [])
+                
+                # Validate and process bids
+                bids = []
+                bids_total = 0.0
+                if isinstance(bids_raw, list):
+                    for level in bids_raw[:20]:
+                        if isinstance(level, list) and len(level) >= 2:
+                            try:
+                                price = float(level[0])
+                                qty = float(level[1])
+                                bids_total += qty * price
+                                bids.append({"price": price, "quantity": qty, "total": bids_total})
+                            except (ValueError, TypeError):
+                                continue
+                
+                # Validate and process asks
+                asks = []
+                asks_total = 0.0
+                if isinstance(asks_raw, list):
+                    for level in asks_raw[:20]:
+                        if isinstance(level, list) and len(level) >= 2:
+                            try:
+                                price = float(level[0])
+                                qty = float(level[1])
+                                asks_total += qty * price
+                                asks.append({"price": price, "quantity": qty, "total": asks_total})
+                            except (ValueError, TypeError):
+                                continue
+                
+                # Only send if we have data
+                if len(bids) > 0 or len(asks) > 0:
+                    try:
+                        await websocket.send_json({
+                            "type": "initial",
+                            "symbol": symbol,
+                            "bids": bids,
+                            "asks": asks,
+                            "timestamp": data.get("timestamp")
+                        })
+                    except (RuntimeError, WebSocketDisconnect) as send_err:
+                        print(f"Error sending initial orderbook data: {send_err}")
+                        raise  # Re-raise to close connection properly
+                else:
+                    print(f"⚠️ Warning: Empty order book data for {symbol} from Redis (bids: {len(bids_raw) if isinstance(bids_raw, list) else 'N/A'}, asks: {len(asks_raw) if isinstance(asks_raw, list) else 'N/A'})")
+        else:
+            print(f"⚠️ No orderbook data in Redis for {symbol}")
     except Exception as e:
         print(f"Error loading initial orderbook from Redis: {e}")
+        import traceback
+        traceback.print_exc()
         # Don't raise - continue with streaming even if initial data fails
     
-    # 2. Subscribe to shared Kafka consumer
-    try:
-        await kafka_manager.subscribe("crypto_orderbook", symbol, websocket)
+    # 2. Poll Redis periodically for real-time updates
+    # Note: We poll Redis instead of streaming from Kafka because:
+    # - Consumer maintains full order book in Redis
+    # - Kafka only has incremental updates which we skip
+    # - Redis has the latest full snapshot updated every 100ms
+    last_update_id = None
+    poll_interval = 0.2  # Poll every 200ms (5 times per second)
+    
+    async def poll_and_send_updates():
+        """Poll Redis and send updates when order book changes"""
+        nonlocal last_update_id
+        key = f"orderbook:{symbol}:latest"
         
-        # Keep connection alive and monitor for disconnects
         try:
-            while True:
-                # Try to receive with timeout to detect disconnects
+            raw = await redis_client.get(key)
+            if not raw:
+                return
+            
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                return
+            
+            current_update_id = data.get("lastUpdateId")
+            
+            # Only send if update ID changed
+            if current_update_id and current_update_id != last_update_id:
+                # Debug logging (can be removed later)
+                # print(f"🔄 Order book update detected for {symbol}: {last_update_id} → {current_update_id}")
+                bids_raw = data.get("bids", [])
+                asks_raw = data.get("asks", [])
+                
+                # Validate and process bids
+                bids = []
+                bids_total = 0.0
+                if isinstance(bids_raw, list):
+                    for level in bids_raw[:20]:
+                        if isinstance(level, list) and len(level) >= 2:
+                            try:
+                                price = float(level[0])
+                                qty = float(level[1])
+                                bids_total += qty * price
+                                bids.append({"price": price, "quantity": qty, "total": bids_total})
+                            except (ValueError, TypeError):
+                                continue
+                
+                # Validate and process asks
+                asks = []
+                asks_total = 0.0
+                if isinstance(asks_raw, list):
+                    for level in asks_raw[:20]:
+                        if isinstance(level, list) and len(level) >= 2:
+                            try:
+                                price = float(level[0])
+                                qty = float(level[1])
+                                asks_total += qty * price
+                                asks.append({"price": price, "quantity": qty, "total": asks_total})
+                            except (ValueError, TypeError):
+                                continue
+                
+                # Send update if we have valid data
+                # Note: Send even if only one side has data (bids or asks) to allow partial updates
+                if len(bids) > 0 or len(asks) > 0:
+                    try:
+                        payload = {
+                            "type": "update",
+                            "symbol": symbol,
+                            "bids": bids,
+                            "asks": asks,
+                            "timestamp": data.get("timestamp")
+                        }
+                        # print(f"📤 Sending orderbook update to WebSocket for {symbol}: bids={len(bids)}, asks={len(asks)}")
+                        await websocket.send_json(payload)
+                        last_update_id = current_update_id
+                    except (RuntimeError, WebSocketDisconnect):
+                        raise  # Re-raise to stop polling
+                else:
+                    print(f"⚠️ Skipping WebSocket send for {symbol}: no bids or asks data")
+        except (RuntimeError, WebSocketDisconnect):
+            raise  # Re-raise to stop polling
+        except Exception as e:
+            # Log error but continue polling
+            print(f"Error polling orderbook from Redis for {symbol}: {e}")
+    
+    # Set initial last_update_id from initial snapshot
+    try:
+        key = f"orderbook:{symbol}:latest"
+        raw = await redis_client.get(key)
+        if raw:
+            data = json.loads(raw)
+            last_update_id = data.get("lastUpdateId")
+    except:
+        pass
+    
+    # Start polling task
+    try:
+        while True:
+            try:
+                # Poll Redis for updates
+                await poll_and_send_updates()
+                
+                # Also check for client disconnects
                 try:
-                    await asyncio.wait_for(websocket.receive(), timeout=1.0)
+                    await asyncio.wait_for(websocket.receive(), timeout=poll_interval)
                 except asyncio.TimeoutError:
-                    # Timeout is OK, connection still alive
+                    # Timeout is OK, continue polling
                     continue
                 except (WebSocketDisconnect, RuntimeError):
                     # Connection closed
                     break
-        except WebSocketDisconnect:
-            pass
-        except Exception as e:
-            print(f"Error in orderbook websocket: {e}")
-    finally:
-        # Unsubscribe when connection closes
-        await kafka_manager.unsubscribe("crypto_orderbook", symbol, websocket)
+            except (WebSocketDisconnect, RuntimeError):
+                break
+            except Exception as e:
+                print(f"Error in orderbook websocket polling: {e}")
+                await asyncio.sleep(poll_interval)
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"Error in orderbook websocket: {e}")
 
 
 @app.websocket("/ws/trades")
@@ -518,4 +681,120 @@ async def ws_trades(
     finally:
         # Unsubscribe when connection closes
         await kafka_manager.unsubscribe("crypto_trades", symbol, websocket)
+
+
+@app.get("/ranking/top-gainers", response_model=RankingResponse)
+async def get_top_gainers(
+    limit: int = Query(1000, ge=1, le=10000, description="Number of top coins to return"),
+    type: str = Query("gainers", description="Type: 'gainers' or 'losers'"),
+    redis_client=Depends(get_redis),
+):
+    """Get Top Gainers/Losers ranking from Redis"""
+    redis_key = "ranking:top_gainers"
+    
+    try:
+        raw = await redis_client.get(redis_key)
+        if not raw:
+            raise HTTPException(
+                status_code=404,
+                detail="No ranking data available. Spark streaming job may not be running."
+            )
+        
+        rankings_data = json.loads(raw)
+        
+        if not isinstance(rankings_data, list):
+            raise HTTPException(
+                status_code=500,
+                detail="Invalid ranking data format in Redis"
+            )
+        
+        # Convert to CoinRanking objects
+        rankings = [CoinRanking(**item) for item in rankings_data]
+        
+        # Filter by type (gainers or losers)
+        if type == "losers":
+            # Sort by percent_change ascending (most negative first)
+            rankings = sorted(rankings, key=lambda x: x.percent_change)[:limit]
+        else:
+            # Sort by percent_change descending (highest first) - default gainers
+            rankings = sorted(rankings, key=lambda x: x.percent_change, reverse=True)[:limit]
+        
+        return RankingResponse(
+            type=type,
+            count=len(rankings),
+            rankings=rankings,
+            updated_at=datetime.now(timezone.utc).isoformat()
+        )
+        
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Invalid JSON data in Redis: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error loading ranking data: {str(e)}"
+        )
+
+
+@app.get("/prediction/{symbol}", response_model=PredictionResponse)
+async def get_prediction(
+    symbol: str,
+    redis_client=Depends(get_redis),
+    mongo_db=Depends(get_mongo),
+):
+    """Get latest price prediction for a symbol from Redis (fallback to MongoDB)"""
+    redis_key = f"crypto:prediction:{symbol}"
+    
+    try:
+        # Try Redis first
+        raw = await redis_client.get(redis_key)
+        if raw:
+            try:
+                pred_data = json.loads(raw)
+                return PredictionResponse(
+                    symbol=symbol,
+                    prediction=Prediction(**pred_data)
+                )
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"Error parsing prediction JSON from Redis for {symbol}: {e}")
+                # Fall through to MongoDB
+        
+        # Fallback to MongoDB
+        predictions_col = mongo_db["predictions"]
+        latest_pred = await predictions_col.find_one(
+            {"symbol": symbol},
+            sort=[("prediction_time", -1)]
+        )
+        
+        if latest_pred:
+            # Convert MongoDB document to Prediction model
+            pred_data = {
+                "symbol": latest_pred.get("symbol", symbol),
+                "current_price": float(latest_pred.get("close", 0)),
+                "predicted_price": float(latest_pred.get("predicted_price", 0)),
+                "predicted_change": float(latest_pred.get("predicted_change_pct", 0)),
+                "direction": latest_pred.get("direction", "UP"),
+                "prediction_time": latest_pred.get("prediction_time", ""),
+                "target_time": latest_pred.get("target_time", ""),
+                "confidence_score": float(abs(latest_pred.get("predicted_change_pct", 0)))
+            }
+            return PredictionResponse(
+                symbol=symbol,
+                prediction=Prediction(**pred_data)
+            )
+        
+        raise HTTPException(
+            status_code=404,
+            detail=f"No prediction found for {symbol}"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error loading prediction for {symbol}: {str(e)}"
+        )
 

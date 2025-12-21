@@ -21,5 +21,11 @@ COPY airflow/dags/ /opt/airflow/dags/
 # Copy SparkApplication YAMLs vào dưới dags để Jinja tìm được
 COPY Spark/apps/batch/ /opt/airflow/dags/spark_apps/
 
+# Copy Kafka Job YAMLs (clear-redis và history-fetcher)
+# Tạo thư mục kafka_jobs trước
+RUN mkdir -p /opt/airflow/dags/kafka_jobs
+COPY Kafka/configYaml/clear-redis-job.yaml /opt/airflow/dags/kafka_jobs/clear-redis-job.yaml
+COPY Kafka/configYaml/history-fetcher-job.yaml /opt/airflow/dags/kafka_jobs/history-fetcher-job.yaml
+
 # Debug: liệt kê nội dung DAGs và spark_apps khi build
-RUN ls -la /opt/airflow/dags/ && ls -la /opt/airflow/dags/spark_apps/ || true
+RUN ls -la /opt/airflow/dags/ && ls -la /opt/airflow/dags/spark_apps/ && ls -la /opt/airflow/dags/kafka_jobs/ || true

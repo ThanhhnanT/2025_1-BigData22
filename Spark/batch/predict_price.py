@@ -18,21 +18,21 @@ from pyspark.ml import PipelineModel
 from pymongo import MongoClient
 import redis
 
-# Configuration
+# Configuration - default to Kubernetes service names
 # MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://vuongthanhsaovang:9KviWHBS85W7i4j6@ai-tutor.k6sjnzc.mongodb.net")
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:123456@localhost:27017/")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
 MONGO_INPUT_COLLECTION = os.getenv("MONGO_INPUT_COLLECTION", "5m_kline")
 MONGO_PREDICTION_COLLECTION = os.getenv("MONGO_PREDICTION_COLLECTION", "predictions")
 
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_HOST = os.getenv("REDIS_HOST", "redis-master.crypto-infra.svc.cluster.local")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
 ENABLE_REDIS = os.getenv("ENABLE_REDIS", "1") == "1"
 
 MODEL_PATH = os.getenv("MODEL_PATH", "model/crypto_lr_model")
-LOOKBACK_PERIODS = 30  # Need historical data for feature calculation
+LOOKBACK_PERIODS = 40  # Need at least 20 periods for MA20 + buffer
 
 SYMBOLS = [
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
@@ -86,11 +86,6 @@ def fetch_latest_k_per_symbol(mongo_uri, db_name, collection_name, symbols, k=40
 
 
 def normalize_mongo_docs(docs):
-    """Normalize Mongo documents for Spark DataFrame creation.
-    - Drop `_id` ObjectId and any non-required fields
-    - Cast numeric types to native int/float
-    - Keep only fields used downstream
-    """
     required_keys = [
         "symbol", "interval", "openTime", "open", "high", "low", "close", "volume"
     ]
@@ -127,7 +122,6 @@ def create_features(df):
     """Create same features as training"""
     window_spec = Window.partitionBy("symbol").orderBy("openTime")
     
-    # Basic price features
     df = df.withColumn("price_range", col("high") - col("low"))
     df = df.withColumn("body_size", col("close") - col("open"))
     df = df.withColumn("upper_shadow", col("high") - greatest(col("open"), col("close")))
@@ -181,6 +175,7 @@ def create_features(df):
     df = df.withColumn("rsi", 
                        when(col("avg_loss") > 0, 
                             100 - (100 / (1 + col("avg_gain") / col("avg_loss"))))
+                       .when(col("avg_gain") > 0, 100)  # All gains, no losses
                        .otherwise(50))
     
     return df
@@ -188,15 +183,22 @@ def create_features(df):
 
 def main():
     """Main prediction pipeline"""
+    sys.stdout.flush()  # Ensure immediate output
+    
+    start_time = datetime.now(timezone.utc)
     print("=" * 80)
-    print("Crypto Price Prediction - Real-time Inference")
+    print("🔮 Crypto Price Prediction - Real-time Inference")
+    print(f"⏰ Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print("=" * 80)
+    sys.stdout.flush()
     
     # Ensure Spark uses the current Python interpreter (Windows fix)
     os.environ["PYSPARK_PYTHON"] = sys.executable
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
     
     # Initialize Spark
+    print("\n[1/6] 🔧 Initializing Spark Session...")
+    sys.stdout.flush()
     spark = SparkSession.builder \
         .appName("CryptoPricePredictor-Inference") \
         .config("spark.mongodb.read.connection.uri", MONGO_URI) \
@@ -207,44 +209,70 @@ def main():
         .getOrCreate()
     
     spark.sparkContext.setLogLevel("WARN")
+    print("✅ Spark Session initialized")
+    sys.stdout.flush()
     
     # Load model parameters from JSON (robust on Windows)
-    print(f"\n1: Loading model from {MODEL_PATH}...")
+    print(f"\n[2/6] 📂 Loading model from {MODEL_PATH}...")
+    sys.stdout.flush()
     params_path = os.path.join(MODEL_PATH, "model.json")
     if not os.path.exists(params_path):
-        print(f"Model file not found: {params_path}")
+        print(f"❌ Model file not found: {params_path}")
         print("   Please train the model first using train_price_prediction.py")
         return
+    load_start = datetime.now(timezone.utc)
     with open(params_path, 'r') as f:
         model_params = json.load(f)
-    print("Model parameters loaded!")
+    load_duration = (datetime.now(timezone.utc) - load_start).total_seconds()
+    print(f"✅ Model parameters loaded in {load_duration:.1f}s")
+    print(f"   Model type: {model_params.get('model_type', 'Unknown')}")
+    print(f"   Features: {len(model_params.get('features', []))} features")
+    sys.stdout.flush()
     
     # Fetch recent data
-    print(f"\n2: Fetching recent data (last {LOOKBACK_PERIODS} periods)...")
+    print(f"\n[3/6] 📥 Fetching recent data (last {LOOKBACK_PERIODS} periods)...")
+    print(f"   Symbols: {len(SYMBOLS)} symbols")
+    sys.stdout.flush()
+    fetch_start = datetime.now(timezone.utc)
     raw_data = fetch_recent_data(
         MONGO_URI, MONGO_DB, MONGO_INPUT_COLLECTION, 
         SYMBOLS, LOOKBACK_PERIODS
     )
     
     if len(raw_data) < LOOKBACK_PERIODS:
-        print(f"Not enough recent data (got {len(raw_data)}). Falling back to latest per symbol...")
+        print(f"⚠️  Not enough recent data (got {len(raw_data)}). Falling back to latest per symbol...")
+        sys.stdout.flush()
         # Fetch latest K per symbol to ensure sufficient window for features (MA20 needs 20)
         raw_data = fetch_latest_k_per_symbol(
             MONGO_URI, MONGO_DB, MONGO_INPUT_COLLECTION, SYMBOLS, k=max(LOOKBACK_PERIODS, 40)
         )
         if len(raw_data) == 0:
-            print("Still no data. Please populate CRYPTO.5m_kline (run ohlc_5m_aggregator.py).")
+            print("❌ Still no data. Please populate CRYPTO.5m_kline (run ohlc_5m_aggregator.py).")
             return
     
-    print(f"Fetched {len(raw_data)} records")
+    fetch_duration = (datetime.now(timezone.utc) - fetch_start).total_seconds()
+    print(f"✅ Fetched {len(raw_data)} records in {fetch_duration:.1f}s")
+    sys.stdout.flush()
     
     # Normalize and convert to Spark DataFrame (drop _id, fix types)
+    print("   Normalizing data...")
+    sys.stdout.flush()
+    normalize_start = datetime.now(timezone.utc)
     raw_data = normalize_mongo_docs(raw_data)
     df = spark.createDataFrame(raw_data)
+    normalize_duration = (datetime.now(timezone.utc) - normalize_start).total_seconds()
+    print(f"✅ DataFrame created: {df.count()} rows in {normalize_duration:.1f}s")
+    sys.stdout.flush()
     
     # Create features
-    print("\n3: Engineering features...")
+    print("\n[4/6] 🔧 Engineering features...")
+    print("   Computing moving averages, RSI, volatility...")
+    sys.stdout.flush()
+    feature_start = datetime.now(timezone.utc)
     df_features = create_features(df)
+    feature_duration = (datetime.now(timezone.utc) - feature_start).total_seconds()
+    print(f"✅ Features created in {feature_duration:.1f}s")
+    sys.stdout.flush()
     
     # Feature columns (must match training)
     feature_cols = [
@@ -271,18 +299,14 @@ def main():
     for fcol in feature_cols:
         df_predict = df_predict.filter(col(fcol).isNotNull())
     
-    print(f"Ready to predict for {df_predict.count()} symbols")
+    predict_count = df_predict.count()
+    print(f"✅ Ready to predict for {predict_count} symbols")
+    sys.stdout.flush()
     
     # Make predictions (manual inference with scaler params)
-    print("\n4: Making predictions...")
-    feature_cols = [
-        "return_1", "return_2",
-        "price_to_ma5", "price_to_ma20",
-        "volatility_5", "volatility_10",
-        "volume_ratio",
-        "rsi",
-        "price_range", "body_size"
-    ]
+    print("\n[5/6] 🎯 Making predictions...")
+    sys.stdout.flush()
+    predict_start = datetime.now(timezone.utc)
 
     # Build prediction expression: sum(((x - mean)/std) * coef) + intercept
     intercept = float(model_params.get("intercept", 0.0))
@@ -297,6 +321,7 @@ def main():
     predictions = df_predict.withColumn("prediction", pred_expr)
     
     # Calculate predicted price and direction
+    from pyspark.sql.functions import from_unixtime
     predictions = predictions.withColumn(
         "predicted_change_pct", col("prediction")
     ).withColumn(
@@ -306,8 +331,12 @@ def main():
     ).withColumn(
         "prediction_time", lit(datetime.now(timezone.utc).isoformat())
     ).withColumn(
-        "target_time", lit((datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat())
+        "target_time", from_unixtime((col("openTime") + 300000) / 1000)  # Next 5m candle time
     )
+    
+    predict_duration = (datetime.now(timezone.utc) - predict_start).total_seconds()
+    print(f"✅ Predictions computed in {predict_duration:.1f}s")
+    sys.stdout.flush()
     
     # Select output columns
     output = predictions.select(
@@ -325,13 +354,65 @@ def main():
         "volume_ratio"
     )
     
-    # Show predictions
-    print("\n📈 PREDICTIONS:")
+    # Show predictions in a formatted way
+    print("\n" + "=" * 80)
+    print("📈 PREDICTION RESULTS")
     print("=" * 80)
+    sys.stdout.flush()
+    
+    # Collect predictions and display
+    predictions_collected = output.orderBy(col("predicted_change_pct").desc()).collect()
+    
+    if predictions_collected:
+        print(f"\n{'Symbol':<12} {'Current':<12} {'Predicted':<12} {'Change %':<10} {'Direction':<8} {'RSI':<6}")
+        print("-" * 80)
+        for row in predictions_collected:
+            symbol = row["symbol"]
+            current = float(row["close"])
+            predicted = float(row["predicted_price"])
+            change_pct = float(row["predicted_change_pct"])
+            direction = row["direction"]
+            # Spark Row doesn't support .get(), use try-except or direct access
+            try:
+                rsi = float(row["rsi"]) if row["rsi"] is not None else 50.0
+            except (KeyError, TypeError):
+                rsi = 50.0
+            
+            # Format with colors/indicators
+            direction_icon = "📈" if direction == "UP" else "📉"
+            print(f"{symbol:<12} ${current:<11.4f} ${predicted:<11.4f} {change_pct:>+8.2f}% {direction_icon} {direction:<6} {rsi:>5.1f}")
+        
+        print("-" * 80)
+        print(f"Total predictions: {len(predictions_collected)} symbols")
+        
+        # Summary statistics
+        up_count = sum(1 for row in predictions_collected if row["direction"] == "UP")
+        down_count = len(predictions_collected) - up_count
+        avg_change = sum(float(row["predicted_change_pct"]) for row in predictions_collected) / len(predictions_collected)
+        max_gain = max(float(row["predicted_change_pct"]) for row in predictions_collected)
+        max_loss = min(float(row["predicted_change_pct"]) for row in predictions_collected)
+        
+        print(f"\n📊 Summary:")
+        print(f"   UP predictions: {up_count} ({100*up_count/len(predictions_collected):.1f}%)")
+        print(f"   DOWN predictions: {down_count} ({100*down_count/len(predictions_collected):.1f}%)")
+        print(f"   Average change: {avg_change:+.2f}%")
+        print(f"   Max gain: {max_gain:+.2f}%")
+        print(f"   Max loss: {max_loss:+.2f}%")
+    else:
+        print("⚠️  No predictions generated!")
+    
+    print("=" * 80)
+    sys.stdout.flush()
+    
+    # Also show Spark DataFrame for detailed view
+    print("\n📋 Detailed Predictions (Spark DataFrame):")
     output.orderBy(col("predicted_change_pct").desc()).show(20, truncate=False)
+    sys.stdout.flush()
     
     # Save to MongoDB
-    print("\n5: Saving predictions to MongoDB...")
+    print("\n[6/6] 💾 Saving predictions...")
+    sys.stdout.flush()
+    save_start = datetime.now(timezone.utc)
     predictions_list = output.toPandas().to_dict('records')
     
     client = MongoClient(MONGO_URI)
@@ -344,10 +425,10 @@ def main():
     # Insert predictions
     if predictions_list:
         collection.insert_many(predictions_list)
-        print(f"Saved {len(predictions_list)} predictions to MongoDB")
+        print(f"✅ Saved {len(predictions_list)} predictions to MongoDB")
+    sys.stdout.flush()
     
     # Save to Redis for quick access
-    print("\n6: Saving to Redis...")
     if ENABLE_REDIS:
         try:
             redis_client = redis.Redis(
@@ -361,7 +442,7 @@ def main():
                 key = f"crypto:prediction:{pred['symbol']}"
                 redis_client.setex(
                     key,
-                    300,  # 5 minutes TTL
+                    1800,  # 30 minutes TTL
                     json.dumps({
                         "symbol": pred["symbol"],
                         "current_price": float(pred["close"]),
@@ -374,11 +455,16 @@ def main():
                     })
                 )
             redis_client.close()
-            print("Saved to Redis")
+            print(f"✅ Saved {len(predictions_list)} predictions to Redis")
         except Exception as e:
-            print(f"Redis not available ({REDIS_HOST}:{REDIS_PORT}): {e}. Skipping Redis save.")
+            print(f"⚠️  Redis not available ({REDIS_HOST}:{REDIS_PORT}): {e}. Skipping Redis save.")
     else:
-        print("Skipping Redis save (ENABLE_REDIS=0)")
+        print("ℹ️  Skipping Redis save (ENABLE_REDIS=0)")
+    sys.stdout.flush()
+    
+    save_duration = (datetime.now(timezone.utc) - save_start).total_seconds()
+    print(f"✅ All predictions saved in {save_duration:.1f}s")
+    sys.stdout.flush()
     
     # Summary
     print("\n" + "=" * 80)
@@ -392,8 +478,12 @@ def main():
     avg_change = output.agg({"predicted_change_pct": "avg"}).collect()[0][0]
     print(f"Average predicted change: {avg_change:.4f}%")
     
-    print("\nPrediction completed successfully!")
+    total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+    print("\n" + "=" * 80)
+    print("✅ Prediction completed successfully!")
+    print(f"⏰ Total time: {total_duration:.1f}s ({total_duration/60:.1f} minutes)")
     print("=" * 80)
+    sys.stdout.flush()
     
     client.close()
     spark.stop()

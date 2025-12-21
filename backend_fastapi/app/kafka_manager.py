@@ -173,29 +173,67 @@ class SharedKafkaManager:
         
         elif "orderbook" in topic.lower():
             # Orderbook message format
+            # Note: Binance depth stream sends incremental updates with 'b' and 'a' fields
+            # Full snapshots have 'bids' and 'asks' fields
+            # We only process full snapshots here, incremental updates are handled by Redis consumer
+            
             bids_raw = msg.get("bids", [])
             asks_raw = msg.get("asks", [])
+            
+            # Skip if this is an incremental update (has 'b' and 'a' but no 'bids' and 'asks')
+            if not bids_raw and not asks_raw:
+                # Check if it's an incremental update
+                if msg.get("b") is not None or msg.get("a") is not None:
+                    # This is an incremental update, skip it
+                    # The Redis consumer maintains the full order book
+                    return None
+            
+            # Only process if we have full snapshot data
+            if not bids_raw or not asks_raw:
+                return None
+            
+            # Validate data format
+            if not isinstance(bids_raw, list) or not isinstance(asks_raw, list):
+                return None
             
             # Calculate totals
             bids = []
             bids_total = 0.0
-            for price, qty in bids_raw[:20]:
-                bids_total += qty * price
-                bids.append({
-                    "price": float(price),
-                    "quantity": float(qty),
-                    "total": bids_total
-                })
+            try:
+                for level in bids_raw[:20]:
+                    if not isinstance(level, list) or len(level) < 2:
+                        continue
+                    price = float(level[0])
+                    qty = float(level[1])
+                    bids_total += qty * price
+                    bids.append({
+                        "price": price,
+                        "quantity": qty,
+                        "total": bids_total
+                    })
+            except (ValueError, TypeError, IndexError):
+                return None
             
             asks = []
             asks_total = 0.0
-            for price, qty in asks_raw[:20]:
-                asks_total += qty * price
-                asks.append({
-                    "price": float(price),
-                    "quantity": float(qty),
-                    "total": asks_total
-                })
+            try:
+                for level in asks_raw[:20]:
+                    if not isinstance(level, list) or len(level) < 2:
+                        continue
+                    price = float(level[0])
+                    qty = float(level[1])
+                    asks_total += qty * price
+                    asks.append({
+                        "price": price,
+                        "quantity": qty,
+                        "total": asks_total
+                    })
+            except (ValueError, TypeError, IndexError):
+                return None
+            
+            # Only return if we have valid data
+            if len(bids) == 0 or len(asks) == 0:
+                return None
             
             return {
                 "type": "update",

@@ -1,0 +1,38 @@
+# Spark Operator Values for crypto-infra namespace
+# This file configures Spark Operator to watch crypto-infra namespace
+
+workloadResources:
+  # Don't create namespace (already exists)
+  namespaces:
+    create: false
+    overrideWatchedNamespaces: true
+    data:
+      - "crypto-infra"
+  
+  # Create service account for Spark workloads
+  serviceAccount:
+    create: true
+    name: "spark"
+  
+  # Use ClusterRole for Spark workloads (allows Spark apps to run in any namespace)
+  clusterRole:
+    create: true
+    name: "spark-workload-clusterrole"
+  
+  roleBinding:
+    create: true
+    name: "spark-workload-rolebinding"
+
+# Operator configuration
+operatorDeployment:
+  replicas: 1  # Single replica for Minikube (can increase for production)
+  operatorPod:
+    operatorContainer:
+      resources:
+        limits:
+          cpu: "500m"
+          memory: "1Gi"
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+

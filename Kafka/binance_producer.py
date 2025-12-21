@@ -4,8 +4,8 @@ from kafka import KafkaProducer
 import websocket
 import threading
 
-# Kafka configuration - default to Kubernetes service name, fallback to local NodePort
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092")
+# Kafka configuration - default to Kubernetes service name
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "my-cluster-kafka-bootstrap.crypto-infra:9092")
 TOPIC = os.getenv("KAFKA_TOPIC", "crypto_kline_1m")
 
 CRYPTO_SYMBOLS = [

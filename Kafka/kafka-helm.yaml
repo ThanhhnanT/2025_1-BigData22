@@ -23,6 +23,7 @@ apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: my-cluster
+  namespace: crypto-infra
   annotations:
     strimzi.io/node-pools: enabled
     strimzi.io/kraft: enabled
@@ -41,6 +42,9 @@ spec:
         port: 9094
         type: nodeport
         tls: false
+        configuration:
+          bootstrap:
+            nodePort: 30995
 
     config:
       offsets.topic.replication.factor: 3
@@ -48,6 +52,7 @@ spec:
       transaction.state.log.min.isr: 2
       default.replication.factor: 3
       min.insync.replicas: 2
+      log.retention.minutes: 2
   entityOperator:
     topicOperator: {}
     userOperator: {}

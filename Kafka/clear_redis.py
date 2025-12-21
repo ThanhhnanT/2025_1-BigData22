@@ -6,7 +6,7 @@ Script to clear Redis data
 import os
 import redis
 
-REDIS_HOST = os.getenv("REDIS_HOST", "my-redis-master.crypto-infra.svc.cluster.local")
+REDIS_HOST = os.getenv("REDIS_HOST", "redis-master.crypto-infra.svc.cluster.local")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")

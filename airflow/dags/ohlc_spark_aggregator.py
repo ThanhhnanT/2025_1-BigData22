@@ -101,49 +101,49 @@ with DAG(
     
     aggregate_1h_task
 
-# DAG 5h - Run every 5 hours
+# DAG 4h - Run every 4 hours
 with DAG(
-    dag_id="ohlc_5h_spark_aggregator",
+    dag_id="ohlc_4h_spark_aggregator",
     default_args=default_args,
-    description="Aggregate OHLC 5h using Spark on Minikube",
-    schedule="0 */5 * * *",  # Every 5 hours at minute 0
+    description="Aggregate OHLC 4h using Spark on Minikube",
+    schedule="0 */4 * * *",  # Every 4 hours at minute 0
     catchup=False,
-    tags=["crypto", "ohlc", "spark", "5h"],
+    tags=["crypto", "ohlc", "spark", "4h"],
     start_date=datetime(2024, 1, 1),
     max_active_runs=1,
-) as dag_5h:
+) as dag_4h:
     
-    aggregate_5h_task = BashOperator(
-        task_id="spark_aggregate_5h",
+    aggregate_4h_task = BashOperator(
+        task_id="spark_aggregate_4h",
         bash_command=f"""
         cd {SPARK_APPS_PATH} && \
         echo "🧹 Cleaning up any existing SparkApplication..." && \
-        kubectl delete sparkapplication ohlc-5h-aggregator -n crypto-infra --ignore-not-found=true && \
+        kubectl delete sparkapplication ohlc-4h-aggregator -n crypto-infra --ignore-not-found=true && \
         sleep 3 && \
         echo "📝 Applying SparkApplication manifest..." && \
-        kubectl apply -f ohlc-5h-aggregator.yaml && \
+        kubectl apply -f ohlc-4h-aggregator.yaml && \
         sleep 5 && \
         echo "🔍 Waiting for driver pod to be created..." && \
-        timeout 60 bash -c 'until kubectl get pods -n crypto-infra | grep -q "ohlc-5h-aggregator.*driver"; do sleep 2; done' || true && \
+        timeout 60 bash -c 'until kubectl get pods -n crypto-infra | grep -q "ohlc-4h-aggregator.*driver"; do sleep 2; done' || true && \
         echo "🔍 Driver pod found, waiting for completion..." && \
-        DRIVER_POD=$(kubectl get pods -n crypto-infra --no-headers | grep "ohlc-5h-aggregator.*driver" | awk '{{print $1}}' | head -1) && \
+        DRIVER_POD=$(kubectl get pods -n crypto-infra --no-headers | grep "ohlc-4h-aggregator.*driver" | awk '{{print $1}}' | head -1) && \
         if [ -n "$DRIVER_POD" ]; then \
           echo "📝 Waiting for pod: $DRIVER_POD" && \
           kubectl wait --for=condition=Ready=false --timeout=600s pod/$DRIVER_POD -n crypto-infra || true && \
           echo "✅ Pod completed. Getting logs..." && \
           kubectl logs -n crypto-infra $DRIVER_POD --tail=100 && \
           echo "📊 Checking final status..." && \
-          kubectl get sparkapplication ohlc-5h-aggregator -n crypto-infra 2>/dev/null || echo "SparkApplication may have been deleted" && \
+          kubectl get sparkapplication ohlc-4h-aggregator -n crypto-infra 2>/dev/null || echo "SparkApplication may have been deleted" && \
           exit 0; \
         else \
           echo "❌ Driver pod not found. Checking SparkApplication status..." && \
-          kubectl get sparkapplication ohlc-5h-aggregator -n crypto-infra -o yaml | grep -A 20 "status:" || echo "SparkApplication not found" && \
+          kubectl get sparkapplication ohlc-4h-aggregator -n crypto-infra -o yaml | grep -A 20 "status:" || echo "SparkApplication not found" && \
           exit 1; \
         fi
         """,
     )
     
-    aggregate_5h_task
+    aggregate_4h_task
 
 # DAG 1d - Run daily at midnight UTC
 with DAG(

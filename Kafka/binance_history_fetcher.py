@@ -11,12 +11,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 import redis
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@my-mongo-mongodb.crypto-infra.svc.cluster.local:27017/")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
 YEARS_BACK = int(os.getenv("YEARS_BACK", "1"))
 RESUME_FROM_EXISTING = os.getenv("RESUME_FROM_EXISTING", "true").lower() == "true" 
 
-REDIS_HOST = os.getenv("REDIS_HOST", "my-redis-master.crypto-infra.svc.cluster.local")
+REDIS_HOST = os.getenv("REDIS_HOST", "redis-master.crypto-infra.svc.cluster.local")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
@@ -41,9 +41,7 @@ BASE_SYMBOLS = [
 
 SYMBOLS = [f"{symbol}USDT" for symbol in BASE_SYMBOLS]
 
-# Intervals to fetch
-# Note: Binance does not support 5h interval, use 4h instead
-# 1m interval will be saved to Redis (1 day of data)
+
 INTERVALS = ["1m", "5m", "1h", "4h", "1d"]
 
 COLLECTION_MAP = {

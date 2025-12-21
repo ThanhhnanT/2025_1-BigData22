@@ -31,10 +31,10 @@ spec:
     spark.executor.memory: "512m"
     # Application name
     spark.app.name: Spark-Simple-Test
-    spark.kubernetes.container.image: vvt/spark-crypto:3.5.0
+    spark.kubernetes.container.image: vvt/spark-crypto:3.3.0
   # Runtime versions
   runtimeVersions:
-    sparkVersion: "3.5"
+    sparkVersion: "3.3"
   # Deployment mode
   deploymentMode: ClusterMode
   # Application tolerations

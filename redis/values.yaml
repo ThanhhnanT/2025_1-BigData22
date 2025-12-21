@@ -205,6 +205,9 @@ commonConfiguration: |-
   appendonly yes
   # Disable RDB persistence, AOF persistence already enabled.
   save ""
+  # Allow Redis to start even if AOF tail is corrupted (in bytes)
+  # This helps recover from AOF corruption issues
+  aof-load-corrupt-tail-max-size 100000
 ## @param existingConfigmap The name of an existing ConfigMap with your custom configuration for Redis(R) nodes
 ##
 existingConfigmap: ""
@@ -584,7 +587,6 @@ master:
     ## @param master.service.type Redis(R) master service type
     ##
     type: NodePort
-    nodePort: 31111
     ## @param master.service.portNames.redis Redis(R) master service port name
     ##
     portNames:
@@ -598,7 +600,7 @@ master:
     ## NOTE: choose port between <30000-32767>
     ##
     nodePorts:
-      redis: ""
+      redis: "31001"
     ## @param master.service.externalTrafficPolicy Redis(R) master service external traffic policy
     ## ref: https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip
     ##

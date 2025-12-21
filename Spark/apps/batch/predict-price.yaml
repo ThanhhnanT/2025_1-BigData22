@@ -1,0 +1,76 @@
+apiVersion: spark.apache.org/v1
+kind: SparkApplication
+metadata:
+  name: predict-price
+  namespace: crypto-infra
+spec:
+  # Python entrypoint inside the image
+  driverArgs:
+    - local:///opt/spark/jobs/predict_price.py
+  
+  # Python dependencies
+  pyFiles: local:///opt/spark/jobs/predict_price.py
+  
+  # Spark configuration
+  sparkConf:
+    # Kubernetes settings
+    spark.kubernetes.authenticate.driver.serviceAccountName: spark
+    spark.kubernetes.executor.deleteOnTermination: "true"
+    spark.kubernetes.driver.deleteOnTermination: "true"
+    
+    # Master and deploy mode
+    spark.master: k8s://https://kubernetes.default.svc
+    spark.submit.deployMode: cluster
+    
+    # Resources - Prediction needs less resources than training
+    spark.driver.cores: "1"
+    spark.driver.memory: "1g"
+    spark.executor.cores: "1"
+    spark.executor.instances: "1"
+    spark.executor.memory: "1g"
+    
+    # Application name and image
+    spark.app.name: Crypto-Price-Prediction
+    spark.kubernetes.container.image: vvt/spark-crypto:3.3.0
+    
+    # Environment variables for driver - use Kubernetes service names
+    spark.kubernetes.driverEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/
+    spark.kubernetes.driverEnv.MONGO_DB: CRYPTO
+    spark.kubernetes.driverEnv.MONGO_INPUT_COLLECTION: 5m_kline
+    spark.kubernetes.driverEnv.MONGO_PREDICTION_COLLECTION: predictions
+    spark.kubernetes.driverEnv.REDIS_HOST: redis-master.crypto-infra.svc.cluster.local
+    spark.kubernetes.driverEnv.REDIS_PORT: "6379"
+    spark.kubernetes.driverEnv.REDIS_DB: "0"
+    spark.kubernetes.driverEnv.REDIS_PASSWORD: "123456"
+    spark.kubernetes.driverEnv.ENABLE_REDIS: "1"
+    spark.kubernetes.driverEnv.MODEL_PATH: /mnt/models/crypto_lr_model
+    
+    # Environment variables for executors - use Kubernetes service names
+    spark.kubernetes.executorEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/
+    spark.kubernetes.executorEnv.MONGO_DB: CRYPTO
+    spark.kubernetes.executorEnv.MONGO_INPUT_COLLECTION: 5m_kline
+    spark.kubernetes.executorEnv.MONGO_PREDICTION_COLLECTION: predictions
+    spark.kubernetes.executorEnv.REDIS_HOST: redis-master.crypto-infra.svc.cluster.local
+    spark.kubernetes.executorEnv.REDIS_PORT: "6379"
+    spark.kubernetes.executorEnv.REDIS_DB: "0"
+    spark.kubernetes.executorEnv.REDIS_PASSWORD: "123456"
+    spark.kubernetes.executorEnv.ENABLE_REDIS: "1"
+    spark.kubernetes.executorEnv.MODEL_PATH: /mnt/models/crypto_lr_model
+    
+    # Volume mounts for model storage (using sparkConf)
+    spark.kubernetes.driver.volumes.persistentVolumeClaim.model-storage.options.claimName: ml-model-storage
+    spark.kubernetes.driver.volumes.persistentVolumeClaim.model-storage.mount.path: /mnt/models
+    spark.kubernetes.executor.volumes.persistentVolumeClaim.model-storage.options.claimName: ml-model-storage
+    spark.kubernetes.executor.volumes.persistentVolumeClaim.model-storage.mount.path: /mnt/models
+  
+  # Runtime versions
+  runtimeVersions:
+    sparkVersion: "3.3"
+  
+  # Deployment mode
+  deploymentMode: ClusterMode
+  
+  # Application tolerations
+  applicationTolerations:
+    resourceRetainPolicy: Always
+

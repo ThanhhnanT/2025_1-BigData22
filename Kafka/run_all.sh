@@ -38,18 +38,18 @@ echo ""
 # Xóa PID file cũ nếu có
 rm -f "$PID_FILE"
 
-# 0. Clear Redis data (optional - uncomment if you want to clear Redis on startup)
-echo "🗑️  Clearing Redis data..."
-cd "$SCRIPT_DIR"
-python3 clear_redis.py
-echo "✅ Redis cleared"
-sleep 1
+# # 0. Clear Redis data (optional - uncomment if you want to clear Redis on startup)
+# echo "🗑️  Clearing Redis data..."
+# cd "$SCRIPT_DIR"
+# python3 clear_redis.py
+# echo "✅ Redis cleared"
+# sleep 1
 
-# 0.1. Fetch historical 1m data into Redis
-echo "📥 Fetching historical 1m data into Redis..."
-python3 binance_history_fetcher.py > "$LOG_DIR/history_fetcher.log" 2>&1
-echo "✅ Historical data fetched"
-sleep 2
+# # 0.1. Fetch historical 1m data into Redis
+# echo "📥 Fetching historical 1m data into Redis..."
+# python3 binance_history_fetcher.py > "$LOG_DIR/history_fetcher.log" 2>&1
+# echo "✅ Historical data fetched"
+# sleep 2
 
 # 1. Binance Kline Producer
 echo "📊 Starting Binance Kline Producer..."

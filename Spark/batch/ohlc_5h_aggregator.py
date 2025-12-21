@@ -11,8 +11,8 @@ from pyspark.sql.functions import col, first, last, max as spark_max, min as spa
 from pymongo import MongoClient
 from pymongo.errors import OperationFailure
 
-# Environment variables (local MongoDB)
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@192.168.49.2:30376/")
+# Environment variables - default to Kubernetes service name
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
 SOURCE_COLLECTION = "1h_kline"
 TARGET_COLLECTION = "5h_kline"
@@ -100,8 +100,37 @@ def main():
     
     print(f"✅ Loaded {len(klines)} 1h klines from MongoDB")
     
+    # Normalize MongoDB documents: remove _id and convert BSON types to Python native types
+    from bson import Int64, Decimal128
+    normalized_klines = []
+    for kline in klines:
+        if not isinstance(kline, dict):
+            continue
+        nk = dict(kline)
+        # Remove _id ObjectId field (Spark can't infer schema for ObjectId)
+        nk.pop("_id", None)
+        # Convert BSON Int64 to Python int
+        for key in ["openTime", "closeTime", "trades"]:
+            if key in nk and isinstance(nk[key], Int64):
+                nk[key] = int(nk[key])
+        # Convert BSON Decimal128 and other numeric types to Python float
+        for key in ["open", "high", "low", "close", "volume", "quoteVolume"]:
+            if key in nk:
+                if isinstance(nk[key], (Int64, Decimal128)):
+                    nk[key] = float(nk[key])
+                elif nk[key] is not None:
+                    try:
+                        nk[key] = float(nk[key])
+                    except (ValueError, TypeError):
+                        pass
+        # Convert string fields
+        for key in ["symbol", "interval"]:
+            if key in nk and nk[key] is not None:
+                nk[key] = str(nk[key])
+        normalized_klines.append(nk)
+    
     # Convert to Spark DataFrame
-    df = spark.createDataFrame(klines)
+    df = spark.createDataFrame(normalized_klines)
     
     # Ensure proper types
     df = df.withColumn("open", col("open").cast("double")) \

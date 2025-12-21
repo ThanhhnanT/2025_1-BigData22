@@ -147,6 +147,7 @@ def create_features(df):
     df = df.withColumn("rsi", 
                        when(col("avg_loss") > 0, 
                             100 - (100 / (1 + col("avg_gain") / col("avg_loss"))))
+                       .when(col("avg_gain") > 0, 100)  # All gains, no losses
                        .otherwise(50))
     
     # Target: Next 5-minute price change (%)
@@ -162,15 +163,23 @@ def create_features(df):
 
 def main():
     """Main training pipeline"""
+    import sys
+    sys.stdout.flush()  # Ensure immediate output
+    
+    start_time = datetime.now(timezone.utc)
     print("=" * 80)
     print("🤖 Crypto Price Prediction - Linear Regression Training")
+    print(f"⏰ Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print("=" * 80)
+    sys.stdout.flush()
 
     # Ensure Spark uses current Python interpreter (avoids missing python.exe issue on Windows)
     os.environ["PYSPARK_PYTHON"] = sys.executable
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
     
     # Initialize Spark
+    print("\n[1/7] 🔧 Initializing Spark Session...")
+    sys.stdout.flush()
     spark = SparkSession.builder \
         .appName("CryptoPricePredictor-Training") \
         .config("spark.mongodb.read.connection.uri", MONGO_URI) \
@@ -178,22 +187,37 @@ def main():
         .getOrCreate()
     
     spark.sparkContext.setLogLevel("WARN")
+    print("✅ Spark Session initialized")
+    sys.stdout.flush()
     
     # Fetch data from MongoDB
-    print("\n📥 Step 1: Fetching training data...")
+    print("\n[2/7] 📥 Fetching training data from MongoDB...")
+    print(f"   Training days: {TRAINING_DAYS}")
+    print(f"   Symbols: {len(SYMBOLS)} symbols")
+    sys.stdout.flush()
+    fetch_start = datetime.now(timezone.utc)
     raw_data = fetch_training_data(MONGO_URI, MONGO_DB, MONGO_COLLECTION, SYMBOLS, TRAINING_DAYS)
+    fetch_duration = (datetime.now(timezone.utc) - fetch_start).total_seconds()
+    print(f"✅ Fetched {len(raw_data)} records in {fetch_duration:.1f}s")
+    sys.stdout.flush()
     
     if len(raw_data) < 100:
         print("❌ Not enough training data!")
         return
 
     # Normalize docs: drop MongoDB ObjectId and convert pandas/numpy types to native python
+    print("\n[3/7] 🔄 Normalizing and converting data...")
+    sys.stdout.flush()
+    normalize_start = datetime.now(timezone.utc)
     numeric_fields = [
         "openTime", "closeTime", "open", "high", "low", "close",
         "volume", "quoteVolume", "trades"
     ]
 
-    for doc in raw_data:
+    total_docs = len(raw_data)
+    for idx, doc in enumerate(raw_data):
+        if (idx + 1) % 10000 == 0:
+            print(f"   Processing: {idx + 1}/{total_docs} documents ({100*(idx+1)/total_docs:.1f}%)", flush=True)
         doc.pop("_id", None)
 
         # Convert nullable integer/float types to native python types Spark can infer
@@ -215,15 +239,31 @@ def main():
                 # If conversion fails, drop the field to avoid schema errors
                 doc.pop(field, None)
     
+    normalize_duration = (datetime.now(timezone.utc) - normalize_start).total_seconds()
+    print(f"✅ Normalized {total_docs} documents in {normalize_duration:.1f}s")
+    sys.stdout.flush()
+    
     # Convert to Spark DataFrame
+    print("   Creating Spark DataFrame...")
+    sys.stdout.flush()
     df = spark.createDataFrame(raw_data)
     
-    print(f"\n📊 Raw data shape: {df.count()} rows, {len(df.columns)} columns")
-    print(f"   Symbols: {df.select('symbol').distinct().count()}")
+    row_count = df.count()
+    col_count = len(df.columns)
+    symbol_count = df.select('symbol').distinct().count()
+    print(f"✅ DataFrame created: {row_count:,} rows, {col_count} columns")
+    print(f"   Symbols: {symbol_count}")
+    sys.stdout.flush()
     
     # Create features
-    print("\n🔧 Step 2: Engineering features...")
+    print("\n[4/7] 🔧 Engineering features...")
+    print("   This may take a few minutes (computing moving averages, RSI, volatility)...")
+    sys.stdout.flush()
+    feature_start = datetime.now(timezone.utc)
     df_features = create_features(df)
+    feature_duration = (datetime.now(timezone.utc) - feature_start).total_seconds()
+    print(f"✅ Features created in {feature_duration:.1f}s")
+    sys.stdout.flush()
     
     # Select feature columns and target
     feature_cols = [
@@ -242,17 +282,27 @@ def main():
     for fcol in feature_cols:
         df_clean = df_clean.filter(col(fcol).isNotNull())
     
-    print(f"✅ Clean data shape: {df_clean.count()} rows")
+    clean_count = df_clean.count()
+    print(f"✅ Clean data: {clean_count:,} rows (removed nulls)")
+    sys.stdout.flush()
     
     # Split train/test (80/20)
-    print("\n✂️  Step 3: Splitting data...")
+    print("\n[5/7] ✂️  Splitting data (80% train, 20% test)...")
+    sys.stdout.flush()
     train_df, test_df = df_clean.randomSplit([0.8, 0.2], seed=42)
     
-    print(f"   Training set: {train_df.count()} rows")
-    print(f"   Test set: {test_df.count()} rows")
+    train_count = train_df.count()
+    test_count = test_df.count()
+    print(f"✅ Split complete:")
+    print(f"   Training set: {train_count:,} rows ({100*train_count/clean_count:.1f}%)")
+    print(f"   Test set: {test_count:,} rows ({100*test_count/clean_count:.1f}%)")
+    sys.stdout.flush()
     
     # Build ML Pipeline
-    print("\n🏗️  Step 4: Building ML pipeline...")
+    print("\n[6/7] 🏗️  Building ML pipeline...")
+    print(f"   Features: {len(feature_cols)} features")
+    print(f"   Model: LinearRegression (maxIter=100)")
+    sys.stdout.flush()
     
     # Assemble features
     assembler = VectorAssembler(
@@ -280,15 +330,28 @@ def main():
     
     # Create pipeline
     pipeline = Pipeline(stages=[assembler, scaler, lr])
+    print("✅ Pipeline built")
+    sys.stdout.flush()
     
     # Train model
-    print("\n🎯 Step 5: Training model...")
+    print("\n[7/7] 🎯 Training model (this is the longest step, ~5-15 minutes)...")
+    print("   Training LinearRegression with 100 iterations...")
+    sys.stdout.flush()
+    train_start = datetime.now(timezone.utc)
     model = pipeline.fit(train_df)
+    train_duration = (datetime.now(timezone.utc) - train_start).total_seconds()
+    print(f"✅ Model trained in {train_duration:.1f}s ({train_duration/60:.1f} minutes)")
+    sys.stdout.flush()
     
     # Evaluate on training set
-    print("\n📈 Step 6: Evaluating model...")
+    print("\n📈 Evaluating model...")
+    sys.stdout.flush()
+    eval_start = datetime.now(timezone.utc)
     train_predictions = model.transform(train_df)
     test_predictions = model.transform(test_df)
+    eval_duration = (datetime.now(timezone.utc) - eval_start).total_seconds()
+    print(f"✅ Predictions generated in {eval_duration:.1f}s")
+    sys.stdout.flush()
     
     evaluator_rmse = RegressionEvaluator(
         labelCol="target",
@@ -337,7 +400,9 @@ def main():
     print(f"  Intercept: {lr_model.intercept:.6f}")
     
     # Save model
-    print(f"\n💾 Step 7: Saving model to {MODEL_PATH}...")
+    print(f"\n💾 Saving model to {MODEL_PATH}...")
+    sys.stdout.flush()
+    save_start = datetime.now(timezone.utc)
     os.makedirs(MODEL_PATH, exist_ok=True)
     # Try Spark pipeline save (may fail on Windows without winutils)
     try:
@@ -345,6 +410,7 @@ def main():
         print("✅ Spark pipeline saved")
     except Exception as e:
         print(f"⚠️  Skipping Spark pipeline save: {e}")
+    sys.stdout.flush()
 
     # Extract scaler params for manual inference
     scaler_model = model.stages[1]
@@ -383,7 +449,9 @@ def main():
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
     
-    print(f"✅ Model params saved to {metadata_path}")
+    save_duration = (datetime.now(timezone.utc) - save_start).total_seconds()
+    print(f"✅ Model params saved to {metadata_path} (took {save_duration:.1f}s)")
+    sys.stdout.flush()
     
     # Show sample predictions
     print("\n🔍 Sample Predictions:")
@@ -393,9 +461,12 @@ def main():
     
     sample_preds.show(truncate=False)
     
+    total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
     print("\n" + "=" * 80)
     print("✅ Training completed successfully!")
+    print(f"⏰ Total time: {total_duration:.1f}s ({total_duration/60:.1f} minutes)")
     print("=" * 80)
+    sys.stdout.flush()
     
     spark.stop()
 

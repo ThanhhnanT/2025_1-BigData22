@@ -1,12 +1,12 @@
 apiVersion: spark.apache.org/v1
 kind: SparkApplication
 metadata:
-  name: ohlc-5h-aggregator
+  name: ohlc-4h-aggregator
   namespace: crypto-infra
 spec:
   driverArgs:
-    - local:///opt/spark/jobs/ohlc_5h_aggregator.py
-  pyFiles: local:///opt/spark/jobs/ohlc_5h_aggregator.py
+    - local:///opt/spark/jobs/ohlc_4h_aggregator.py
+  pyFiles: local:///opt/spark/jobs/ohlc_4h_aggregator.py
   sparkConf:
     spark.kubernetes.authenticate.driver.serviceAccountName: spark
     spark.kubernetes.executor.deleteOnTermination: "true"
@@ -18,19 +18,19 @@ spec:
     spark.executor.cores: "1"
     spark.executor.instances: "1"
     spark.executor.memory: "512m"
-    spark.app.name: OHLC-5h-Aggregator
-    spark.kubernetes.container.image: vvt/spark-crypto:3.5.0
-    # Mongo env (driver & executor)
-    spark.kubernetes.driverEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@192.168.49.2:30376/
+    spark.app.name: OHLC-4h-Aggregator
+    spark.kubernetes.container.image: vvt/spark-crypto:3.3.0
+    # Mongo env (driver & executor) - use Kubernetes service name
+    spark.kubernetes.driverEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/
     spark.kubernetes.driverEnv.MONGO_DB: CRYPTO
     spark.kubernetes.driverEnv.SOURCE_COLLECTION: 1h_kline
-    spark.kubernetes.driverEnv.TARGET_COLLECTION: 5h_kline
-    spark.kubernetes.executorEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@192.168.49.2:30376/
+    spark.kubernetes.driverEnv.TARGET_COLLECTION: 4h_kline
+    spark.kubernetes.executorEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/
     spark.kubernetes.executorEnv.MONGO_DB: CRYPTO
     spark.kubernetes.executorEnv.SOURCE_COLLECTION: 1h_kline
-    spark.kubernetes.executorEnv.TARGET_COLLECTION: 5h_kline
+    spark.kubernetes.executorEnv.TARGET_COLLECTION: 4h_kline
   runtimeVersions:
-    sparkVersion: "3.5"
+    sparkVersion: "3.3"
   deploymentMode: ClusterMode
   applicationTolerations:
     resourceRetainPolicy: Always

@@ -1,29 +1,21 @@
 #!/usr/bin/env python3
 """
-OHLC 5m Aggregator - Spark Batch Job
-Aggregates 1m kline data from Redis into 5m OHLC candles and stores in MongoDB
+OHLC 4h Aggregator - Spark Batch Job
+Aggregates 1h kline data from MongoDB into 4h OHLC candles
 """
 
 import os
-import json
 from datetime import datetime, timedelta, timezone
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, first, last, max as spark_max, min as spark_min, sum as spark_sum
-import redis
 from pymongo import MongoClient
 from pymongo.errors import OperationFailure
 
-# Environment variables
-# Redis: default to Kubernetes service name
-REDIS_HOST = os.getenv("REDIS_HOST", "redis-master.crypto-infra.svc.cluster.local")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-REDIS_DB = int(os.getenv("REDIS_DB", 0))
-REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")
-
-# MongoDB: default to Kubernetes service name
+# Environment variables - default to Kubernetes service name
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/")
 MONGO_DB = os.getenv("MONGO_DB", "CRYPTO")
-MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "5m_kline")
+SOURCE_COLLECTION = "1h_kline"
+TARGET_COLLECTION = "4h_kline"
 
 SYMBOLS = [
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
@@ -32,68 +24,58 @@ SYMBOLS = [
 ]
 
 def main():
+    # Initialize Spark Session
     spark = SparkSession.builder \
-        .appName("OHLC-5m-Aggregator") \
+        .appName("OHLC-4h-Aggregator") \
         .getOrCreate()
     
-    print(f"🚀 Starting OHLC 5m Aggregator - Spark Job")
+    print(f"🚀 Starting OHLC 4h Aggregator - Spark Job")
     print(f"📊 Symbols to process: {len(SYMBOLS)}")
-    
-    # Connect to Redis
-    redis_client = redis.Redis(
-        host=REDIS_HOST,
-        port=REDIS_PORT,
-        db=REDIS_DB,
-        password=REDIS_PASSWORD,
-        decode_responses=True,
-    )
     
     # Connect to MongoDB
     mongo_client = MongoClient(MONGO_URI)
     mongo_db = mongo_client[MONGO_DB]
-    mongo_collection = mongo_db[MONGO_COLLECTION]
+    source_collection = mongo_db[SOURCE_COLLECTION]
+    target_collection = mongo_db[TARGET_COLLECTION]
     
-    # Create index (handle case where index already exists with different name)
-    # Check if index with these fields already exists
+    # Create index (handle case where index already exists)
     index_fields = [("symbol", 1), ("interval", 1), ("openTime", 1)]
-    existing_indexes = mongo_collection.list_indexes()
+    existing_indexes = target_collection.list_indexes()
     index_exists = False
     
     for idx in existing_indexes:
         idx_key = idx.get("key", {})
-        # Check if an index with the same fields exists
-        if (idx_key.get("symbol") == 1 and 
-            idx_key.get("interval") == 1 and 
-            idx_key.get("openTime") == 1):
+        if (
+            idx_key.get("symbol") == 1 and
+            idx_key.get("interval") == 1 and
+            idx_key.get("openTime") == 1
+        ):
             index_exists = True
-            print(f"  ℹ️  Index already exists: {idx.get('name', 'unnamed')}")
+            print(f"  ℹ️  4h index already exists: {idx.get('name', 'unnamed')}")
             break
     
     if not index_exists:
         try:
-            mongo_collection.create_index(
+            target_collection.create_index(
                 index_fields,
                 unique=True,
                 name="symbol_interval_openTime_unique"
             )
-            print("  ✅ Index created successfully")
+            print("  ✅ 4h index created successfully")
         except OperationFailure as e:
-            # Code 85 = IndexOptionsConflict - index already exists with different name
             if e.code == 85:
-                print(f"  ℹ️  Index already exists with different name, skipping creation")
+                print("  ℹ️  4h index already exists with different name, skipping creation")
             else:
-                print(f"  ⚠️  MongoDB index creation error (code {e.code}): {e}")
-                # Don't raise - continue execution
+                print(f"  ⚠️  MongoDB 4h index creation error (code {e.code}): {e}")
         except Exception as e:
-            print(f"  ⚠️  Unexpected error creating index: {e}")
-            # Don't raise - continue execution as index might already exist
+            print(f"  ⚠️  Unexpected error creating 4h index: {e}")
     
-    # Calculate time window
+    # Calculate time window (last complete 4h period)
     now = datetime.now(timezone.utc)
-    current_minute = now.minute
-    rounded_minute = (current_minute // 5) * 5
-    window_end = now.replace(minute=rounded_minute, second=0, microsecond=0)
-    window_start = window_end - timedelta(minutes=5)
+    current_hour = now.hour
+    rounded_hour = (current_hour // 4) * 4
+    window_end = now.replace(hour=rounded_hour, minute=0, second=0, microsecond=0)
+    window_start = window_end - timedelta(hours=4)
     
     start_timestamp = int(window_start.timestamp() * 1000)
     end_timestamp = int(window_end.timestamp() * 1000)
@@ -101,47 +83,56 @@ def main():
     print(f"📅 Time window: {window_start} to {window_end}")
     print(f"   Timestamp: {start_timestamp} - {end_timestamp}")
     
-    # Collect all kline data from Redis for all symbols
-    all_klines = []
+    # Load 1h data from MongoDB for all symbols
+    query = {
+        "symbol": {"$in": SYMBOLS},
+        "interval": "1h",
+        "openTime": {"$gte": start_timestamp, "$lt": end_timestamp}
+    }
     
-    for symbol in SYMBOLS:
-        index_key = f"crypto:{symbol}:1m:index"
-        
-        # Get timestamps in range
-        timestamps = redis_client.zrangebyscore(
-            index_key,
-            start_timestamp,
-            end_timestamp
-        )
-        
-        if not timestamps:
-            print(f"  ⚠️  No data for {symbol}")
-            continue
-        
-        # Fetch kline data
-        for ts in sorted(timestamps):
-            key = f"crypto:{symbol}:1m:{ts}"
-            data = redis_client.get(key)
-            if data:
-                kline = json.loads(data)
-                if kline.get("x", False):  # Only closed candles
-                    kline["symbol"] = symbol
-                    all_klines.append(kline)
+    klines = list(source_collection.find(query))
     
-    redis_client.close()
-    
-    if not all_klines:
-        print("❌ No kline data found")
+    if not klines:
+        print("❌ No 1h kline data found")
         spark.stop()
         mongo_client.close()
         return
     
-    print(f"✅ Loaded {len(all_klines)} 1m klines from Redis")
+    print(f"✅ Loaded {len(klines)} 1h klines from MongoDB")
+    
+    # Normalize MongoDB documents: remove _id and convert BSON types to Python native types
+    from bson import Int64, Decimal128
+    normalized_klines = []
+    for kline in klines:
+        if not isinstance(kline, dict):
+            continue
+        nk = dict(kline)
+        # Remove _id ObjectId field (Spark can't infer schema for ObjectId)
+        nk.pop("_id", None)
+        # Convert BSON Int64 to Python int
+        for key in ["openTime", "closeTime", "trades"]:
+            if key in nk and isinstance(nk[key], Int64):
+                nk[key] = int(nk[key])
+        # Convert BSON Decimal128 and other numeric types to Python float
+        for key in ["open", "high", "low", "close", "volume", "quoteVolume"]:
+            if key in nk:
+                if isinstance(nk[key], (Int64, Decimal128)):
+                    nk[key] = float(nk[key])
+                elif nk[key] is not None:
+                    try:
+                        nk[key] = float(nk[key])
+                    except (ValueError, TypeError):
+                        pass
+        # Convert string fields
+        for key in ["symbol", "interval"]:
+            if key in nk and nk[key] is not None:
+                nk[key] = str(nk[key])
+        normalized_klines.append(nk)
     
     # Convert to Spark DataFrame
-    df = spark.createDataFrame(all_klines)
+    df = spark.createDataFrame(normalized_klines)
     
-    # Convert string columns to appropriate types
+    # Ensure proper types
     df = df.withColumn("open", col("open").cast("double")) \
            .withColumn("high", col("high").cast("double")) \
            .withColumn("low", col("low").cast("double")) \
@@ -152,32 +143,30 @@ def main():
            .withColumn("openTime", col("openTime").cast("long")) \
            .withColumn("closeTime", col("closeTime").cast("long"))
     
-    # Calculate 5m window start time for grouping (floor to 5m intervals)
+    # Calculate 4h window start time for grouping (floor to 4h intervals)
+    # 4 hours = 4 * 60 * 60 * 1000 = 14400000 milliseconds
     df = df.withColumn(
         "window_start",
-        (col("openTime") / 300000).cast("long") * 300000
+        (col("openTime") / 14400000).cast("long") * 14400000
     )
     
-    # Group by symbol and 5m window, aggregate OHLC
+    # Group by symbol and 4h window, aggregate OHLC
     aggregated_df = df.groupBy("symbol", "window_start").agg(
         first("open").alias("open"),
         spark_max("high").alias("high"),
         spark_min("low").alias("low"),
         last("close").alias("close"),
         spark_sum("volume").alias("volume"),
-        spark_sum("quoteVolume").alias("quoteVolume"),
+        spark_sum("quoteVolume").alias("quoteVolue"),
         spark_sum("trades").alias("trades"),
         first("openTime").alias("openTime"),
         last("closeTime").alias("closeTime")
     )
     
-    # Filter only complete 5m windows (should have 5 candles ideally, but we'll check count)
-    # For now, we'll process all that we have
-    
     # Convert to list of documents
     results = aggregated_df.collect()
     
-    print(f"📊 Aggregated into {len(results)} 5m candles")
+    print(f"📊 Aggregated into {len(results)} 4h candles")
     
     # Write to MongoDB
     total_inserted = 0
@@ -185,20 +174,20 @@ def main():
     
     for row in results:
         # Check if already exists
-        existing = mongo_collection.find_one({
+        existing = target_collection.find_one({
             "symbol": row["symbol"],
-            "interval": "5m",
+            "interval": "4h",
             "openTime": row["openTime"]
         })
         
         if existing:
-            print(f"  ℹ️  5m OHLC already exists for {row['symbol']} (openTime: {row['openTime']})")
+            print(f"  ℹ️  4h OHLC already exists for {row['symbol']} (openTime: {row['openTime']})")
             total_skipped += 1
             continue
         
         mongo_doc = {
             "symbol": row["symbol"],
-            "interval": "5m",
+            "interval": "4h",
             "openTime": row["openTime"],
             "closeTime": row["closeTime"],
             "open": row["open"],
@@ -206,14 +195,14 @@ def main():
             "low": row["low"],
             "close": row["close"],
             "volume": row["volume"],
-            "quoteVolume": row["quoteVolume"],
+            "quoteVolume": row["quoteVolue"],  # Note: typo matches aggregation alias
             "trades": row["trades"],
             "createdAt": datetime.now(),
-            "source": "spark_5m_aggregator"
+            "source": "spark_4h_aggregator"
         }
         
         try:
-            mongo_collection.update_one(
+            target_collection.update_one(
                 {
                     "symbol": mongo_doc["symbol"],
                     "interval": mongo_doc["interval"],
@@ -222,7 +211,7 @@ def main():
                 {"$set": mongo_doc},
                 upsert=True
             )
-            print(f"  ✅ {row['symbol']}: 5m OHLC saved (O:{row['open']:.4f}, H:{row['high']:.4f}, L:{row['low']:.4f}, C:{row['close']:.4f})")
+            print(f"  ✅ {row['symbol']}: 4h OHLC saved (O:{row['open']:.4f}, H:{row['high']:.4f}, L:{row['low']:.4f}, C:{row['close']:.4f})")
             total_inserted += 1
         except Exception as e:
             print(f"  ❌ Error saving {row['symbol']}: {e}")
@@ -235,5 +224,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

@@ -1,0 +1,66 @@
+apiVersion: spark.apache.org/v1
+kind: SparkApplication
+metadata:
+  name: train-price-prediction
+  namespace: crypto-infra
+spec:
+  # Python entrypoint inside the image
+  driverArgs:
+    - local:///opt/spark/jobs/train_price_prediction.py
+  
+  # Python dependencies
+  pyFiles: local:///opt/spark/jobs/train_price_prediction.py
+  
+  # Spark configuration
+  sparkConf:
+    # Kubernetes settings
+    spark.kubernetes.authenticate.driver.serviceAccountName: spark
+    spark.kubernetes.executor.deleteOnTermination: "true"
+    spark.kubernetes.driver.deleteOnTermination: "false"  # Keep driver for debugging
+    
+    # Master and deploy mode
+    spark.master: k8s://https://kubernetes.default.svc
+    spark.submit.deployMode: cluster
+    
+    # Resources - Reduced for Minikube constraints
+    spark.driver.cores: "1"
+    spark.driver.memory: "1g"
+    spark.executor.cores: "1"
+    spark.executor.instances: "1"
+    spark.executor.memory: "1g"
+    
+    # Application name and image
+    spark.app.name: Crypto-ML-Training
+    spark.kubernetes.container.image: vvt/spark-crypto:3.3.0
+    
+    # Environment variables for driver - use Kubernetes service name
+    spark.kubernetes.driverEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/
+    spark.kubernetes.driverEnv.MONGO_DB: CRYPTO
+    spark.kubernetes.driverEnv.MONGO_COLLECTION: 5m_kline
+    spark.kubernetes.driverEnv.MODEL_PATH: /mnt/models/crypto_lr_model
+    spark.kubernetes.driverEnv.TRAINING_DAYS: "30"
+    
+    # Environment variables for executors - use Kubernetes service name
+    spark.kubernetes.executorEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/
+    spark.kubernetes.executorEnv.MONGO_DB: CRYPTO
+    spark.kubernetes.executorEnv.MONGO_COLLECTION: 5m_kline
+    spark.kubernetes.executorEnv.MODEL_PATH: /mnt/models/crypto_lr_model
+    spark.kubernetes.executorEnv.TRAINING_DAYS: "30"
+    
+    # Volume mounts for model storage (using sparkConf)
+    spark.kubernetes.driver.volumes.persistentVolumeClaim.model-storage.options.claimName: ml-model-storage
+    spark.kubernetes.driver.volumes.persistentVolumeClaim.model-storage.mount.path: /mnt/models
+    spark.kubernetes.executor.volumes.persistentVolumeClaim.model-storage.options.claimName: ml-model-storage
+    spark.kubernetes.executor.volumes.persistentVolumeClaim.model-storage.mount.path: /mnt/models
+  
+  # Runtime versions
+  runtimeVersions:
+    sparkVersion: "3.3"
+  
+  # Deployment mode
+  deploymentMode: ClusterMode
+  
+  # Application tolerations
+  applicationTolerations:
+    resourceRetainPolicy: Always
+

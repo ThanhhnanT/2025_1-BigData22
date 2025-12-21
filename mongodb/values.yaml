@@ -183,7 +183,7 @@ auth:
   ## @param auth.rootPassword MongoDB(&reg;) root password
   ## ref: https://github.com/bitnami/containers/tree/main/bitnami/mongodb#setting-the-root-user-and-password-on-first-run
   ##
-  rootPassword: ""
+  rootPassword: "8WcVPD9QHx"
   ## MongoDB(&reg;) custom users and databases
   ## ref: https://github.com/bitnami/containers/tree/main/bitnami/mongodb#creating-a-user-and-database-on-first-run
   ## @param auth.usernames List of custom users to be created during the initialization
@@ -776,7 +776,7 @@ service:
   ## @param service.type Kubernetes Service type (only for standalone architecture)
   ##
   type: NodePort
-  nodePort: 30001
+
   ## @param service.portName MongoDB(&reg;) service port name (only for standalone architecture)
   ##
   portName: mongodb
@@ -788,7 +788,7 @@ service:
   ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
   ##
   nodePorts:
-    mongodb: ""
+    mongodb: 30376
   ## @param service.clusterIP MongoDB(&reg;) service cluster IP (only for standalone architecture)
   ## e.g:
   ## clusterIP: None
@@ -1126,7 +1126,7 @@ externalAccess:
 passwordUpdateJob:
   ## @param passwordUpdateJob.enabled Enable password update job
   ##
-  enabled: false
+  enabled: true
   ## @param passwordUpdateJob.backoffLimit set backoff limit of the job
   ##
   backoffLimit: 10
@@ -1142,7 +1142,7 @@ passwordUpdateJob:
   ## @param passwordUpdateJob.previousPasswords.rootPassword Previous root password (set if the password secret was already changed)
   ## @param passwordUpdateJob.previousPasswords.existingSecret Name of a secret containing the previous passwords (set if the password secret was already changed)
   previousPasswords:
-    rootPassword: ""
+    rootPassword: "DK9MAad3cn"
     existingSecret: ""
   ## Configure Container Security Context
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container

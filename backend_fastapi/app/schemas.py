@@ -117,3 +117,19 @@ class PredictionHistoryResponse(BaseModel):
     count: int
     history: List[PredictionHistory]
 
+
+class CoinRanking(BaseModel):
+    symbol: str
+    price: float
+    percent_change: float
+    volume: Optional[float] = None
+    market_cap: Optional[float] = None
+    timestamp: int
+
+
+class RankingResponse(BaseModel):
+    type: str = Field(..., description="Type: 'gainers' or 'losers'")
+    count: int
+    rankings: List[CoinRanking]
+    updated_at: str
+

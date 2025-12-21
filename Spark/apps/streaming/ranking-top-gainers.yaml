@@ -1,20 +1,21 @@
 apiVersion: spark.apache.org/v1
 kind: SparkApplication
 metadata:
-  name: ohlc-5m-aggregator
+  name: ranking-top-gainers
   namespace: crypto-infra
 spec:
   # Python entrypoint inside the image
+  # Use --packages to download Kafka connector and dependencies
   driverArgs:
-    - local:///opt/spark/jobs/ohlc_5m_aggregator.py
+    - local:///opt/spark/jobs/ranking_coins/stream_ranking_top_gainers.py
   # Python dependencies (single file)
-  pyFiles: local:///opt/spark/jobs/ohlc_5m_aggregator.py
+  pyFiles: local:///opt/spark/jobs/ranking_coins/stream_ranking_top_gainers.py
   # Spark configuration
   sparkConf:
     # Kubernetes settings
     spark.kubernetes.authenticate.driver.serviceAccountName: spark
     spark.kubernetes.executor.deleteOnTermination: "true"
-    spark.kubernetes.driver.deleteOnTermination: "true"
+    spark.kubernetes.driver.deleteOnTermination: "false"  # Keep driver running for streaming
     # Master and deploy mode
     spark.master: k8s://https://kubernetes.default.svc
     spark.submit.deployMode: cluster
@@ -25,24 +26,26 @@ spec:
     spark.executor.instances: "1"
     spark.executor.memory: "512m"
     # Application name and image
-    spark.app.name: OHLC-5m-Aggregator
+    spark.app.name: TopGainersRanking
     spark.kubernetes.container.image: vvt/spark-crypto:3.3.0
-    # Env vars (driver & executor) for Redis + Mongo
-    # Redis: trỏ tới Redis service trong cluster (redis-master)
-    spark.kubernetes.driverEnv.REDIS_HOST: redis-master.crypto-infra.svc.cluster.local
+    # Kafka JARs are already included in Docker image
+    # Env vars (driver & executor) for Kafka and Redis
+    # Kafka: use Kubernetes service name
+    spark.kubernetes.driverEnv.KAFKA_BROKER: "my-cluster-kafka-bootstrap.crypto-infra:9092"
+    spark.kubernetes.driverEnv.KAFKA_TOPIC: crypto_kline_1m
+    spark.kubernetes.driverEnv.CHECKPOINT_PATH: /tmp/spark/ranking_top_gainers_cp
+    # Redis: trỏ tới Redis service trong cluster (dùng short name để tránh DNS timeout)
+    spark.kubernetes.driverEnv.REDIS_HOST: redis-master
     spark.kubernetes.driverEnv.REDIS_PORT: "6379"
     spark.kubernetes.driverEnv.REDIS_DB: "0"
     spark.kubernetes.driverEnv.REDIS_PASSWORD: "123456"
-    spark.kubernetes.driverEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/
-    spark.kubernetes.driverEnv.MONGO_DB: CRYPTO
-    spark.kubernetes.driverEnv.MONGO_COLLECTION: 5m_kline
-    spark.kubernetes.executorEnv.REDIS_HOST: redis-master.crypto-infra.svc.cluster.local
+    # Executor env vars
+    spark.kubernetes.executorEnv.KAFKA_BROKER: "my-cluster-kafka-bootstrap.crypto-infra:9092"
+    spark.kubernetes.executorEnv.KAFKA_TOPIC: crypto_kline_1m
+    spark.kubernetes.executorEnv.REDIS_HOST: redis-master
     spark.kubernetes.executorEnv.REDIS_PORT: "6379"
     spark.kubernetes.executorEnv.REDIS_DB: "0"
     spark.kubernetes.executorEnv.REDIS_PASSWORD: "123456"
-    spark.kubernetes.executorEnv.MONGO_URI: mongodb://root:8WcVPD9QHx@mongodb.crypto-infra.svc.cluster.local:27017/
-    spark.kubernetes.executorEnv.MONGO_DB: CRYPTO
-    spark.kubernetes.executorEnv.MONGO_COLLECTION: 5m_kline
   # Runtime versions
   runtimeVersions:
     sparkVersion: "3.3"

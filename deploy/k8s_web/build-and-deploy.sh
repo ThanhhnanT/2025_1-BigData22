@@ -30,15 +30,14 @@ fi
 # Function to build and deploy backend
 deploy_backend() {
     echo ""
-    echo -e "${BLUE}📦 Building Backend Docker image...${NC}"
+    echo -e "${BLUE}📦 Building Backend Docker image in minikube...${NC}"
     cd "${SCRIPT_DIR}/../../backend_fastapi"
+    
+    # Use minikube's Docker daemon
+    eval $(minikube docker-env)
     
     BACKEND_IMAGE="crypto-backend-fastapi:latest"
     docker build -t ${BACKEND_IMAGE} .
-    
-    echo ""
-    echo -e "${BLUE}📥 Loading Backend image into minikube...${NC}"
-    minikube image load ${BACKEND_IMAGE}
     
     echo ""
     echo -e "${BLUE}📋 Applying Backend Kubernetes manifests...${NC}"
@@ -66,15 +65,14 @@ deploy_backend() {
 # Function to build and deploy frontend
 deploy_frontend() {
     echo ""
-    echo -e "${BLUE}📦 Building Frontend Docker image...${NC}"
+    echo -e "${BLUE}📦 Building Frontend Docker image in minikube...${NC}"
     cd "${SCRIPT_DIR}/../../frontend"
+    
+    # Use minikube's Docker daemon
+    eval $(minikube docker-env)
     
     FRONTEND_IMAGE="crypto-frontend-next:local"
     docker build -t ${FRONTEND_IMAGE} .
-    
-    echo ""
-    echo -e "${BLUE}📥 Loading Frontend image into minikube...${NC}"
-    minikube image load ${FRONTEND_IMAGE}
     
     echo ""
     echo -e "${BLUE}📋 Applying Frontend Kubernetes manifests...${NC}"

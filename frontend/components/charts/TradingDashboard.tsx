@@ -8,7 +8,10 @@ import ControlPanel from "./ControlPanel";
 import ChartSection from "./ChartSection";
 import DashboardFooter from "./DashboardFooter";
 import TechnicalIndicatorsModal from "./TechnicalIndicatorsModal";
-import OrderBookTradesSection from "./OrderBookTradesSection";
+import OrderBookSection from "./OrderBookSection";
+import MarketTradesSection from "./MarketTradesSection";
+import PredictionSection from "./PredictionSection";
+import TopGainersSection from "./TopGainersSection";
 import { COLORS } from "@/constants/theme";
 import type { TimeRangeMode, TechnicalIndicatorsConfig } from "@/types/trading";
 import "./TradingDashboard.css";
@@ -71,8 +74,7 @@ export default function TradingDashboard() {
       <main
         style={{
           padding: "16px 24px 32px",
-          maxWidth: "1536px",
-          margin: "0 auto",
+          width: "100%",
         }}
       >
         {/* Control Panel */}
@@ -86,14 +88,30 @@ export default function TradingDashboard() {
         />
 
         {/* Chart Section */}
-        <Row gutter={[24, 24]} style={{ height: "calc(100vh - 250px)", minHeight: "600px" }}>
-          <Col xs={24} lg={18} style={{ height: "100%", display: "flex" }}>
-            <ChartSection symbol={symbol} mode={mode} indicators={indicators} />
+        <Row gutter={[16, 16]} style={{ height: "calc(100vh - 100px)", minHeight: "900px" }}>
+          {/* Order Book - Left Side */}
+          <Col xs={24} lg={4} style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+            {/* Prediction Section - Above Order Book */}
+            <PredictionSection symbol={symbol} wsBase={WS_BASE} />
+            {/* Order Book Section */}
+            <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+              <OrderBookSection symbol={symbol} wsBase={WS_BASE} />
+            </div>
           </Col>
           
-          {/* Order Book & Trades Section */}
-          <Col xs={24} lg={6} style={{ height: "100%", display: "flex" }}>
-            <OrderBookTradesSection symbol={symbol} wsBase={WS_BASE} />
+          {/* Chart & Ranking - Center */}
+          <Col xs={24} lg={16} style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+            <div style={{ flex: 1, minHeight: "600px", marginBottom: 12 }}>
+              <ChartSection symbol={symbol} mode={mode} indicators={indicators} />
+            </div>
+            <div style={{ height: "auto", flexShrink: 0 }}>
+              <TopGainersSection apiBase={API_BASE} />
+            </div>
+          </Col>
+          
+          {/* Market Trades - Right Side */}
+          <Col xs={24} lg={4} style={{ height: "100%", display: "flex" }}>
+            <MarketTradesSection symbol={symbol} wsBase={WS_BASE} />
           </Col>
         </Row>
 

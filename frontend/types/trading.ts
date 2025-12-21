@@ -63,3 +63,23 @@ export interface TradesMessage {
   trades?: Trade[];
   trade?: Trade;
 }
+
+// =============================================================================
+// PREDICTION TYPES
+// =============================================================================
+
+export interface Prediction {
+  symbol: string;
+  current_price: number;
+  predicted_price: number;
+  predicted_change: number; // Percentage change
+  direction: "UP" | "DOWN";
+  prediction_time: string; // ISO timestamp
+  target_time: string; // ISO timestamp (next 5 minutes)
+  confidence_score: number; // Absolute value of predicted_change
+}
+
+export interface PredictionResponse {
+  symbol: string;
+  prediction: Prediction;
+}

@@ -1,0 +1,121 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: airflow-worker-node-reader
+  labels:
+    app: airflow
+    component: worker
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: airflow-worker-node-reader-binding
+  labels:
+    app: airflow
+    component: worker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: airflow-worker-node-reader
+subjects:
+  - kind: ServiceAccount
+    name: airflow-worker
+    namespace: crypto-infra
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airflow-worker-sparkapplications
+  namespace: crypto-infra
+  labels:
+    app: airflow
+    component: worker
+rules:
+  - apiGroups:
+      - "spark.apache.org"
+    resources:
+      - sparkapplications
+      - sparkclusters
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-worker-sparkapplications-binding
+  namespace: crypto-infra
+  labels:
+    app: airflow
+    component: worker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: airflow-worker-sparkapplications
+subjects:
+  - kind: ServiceAccount
+    name: airflow-worker
+    namespace: crypto-infra
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airflow-worker-jobs
+  namespace: crypto-infra
+  labels:
+    app: airflow
+    component: worker
+rules:
+  - apiGroups:
+      - "batch"
+    resources:
+      - jobs
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+      - logs
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-worker-jobs-binding
+  namespace: crypto-infra
+  labels:
+    app: airflow
+    component: worker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: airflow-worker-jobs
+subjects:
+  - kind: ServiceAccount
+    name: airflow-worker
+    namespace: crypto-infra
+

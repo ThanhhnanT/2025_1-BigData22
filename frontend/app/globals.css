@@ -194,7 +194,6 @@ body {
 
 .ant-row > .ant-col > section,
 .ant-row > .ant-col > div {
-  flex: 1;
   display: flex;
   flex-direction: column;
 }

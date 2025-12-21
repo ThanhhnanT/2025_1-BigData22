@@ -4,11 +4,11 @@ from kafka import KafkaConsumer
 import redis
 from datetime import datetime
 
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092")
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "my-cluster-kafka-bootstrap.crypto-infra:9092")
 TOPIC = os.getenv("KAFKA_TOPIC", "crypto_kline_1m")
 CONSUMER_GROUP = os.getenv("CONSUMER_GROUP", "redis_writer_group")
 
-REDIS_HOST = os.getenv("REDIS_HOST", "my-redis-master.crypto-infra.svc.cluster.local")
+REDIS_HOST = os.getenv("REDIS_HOST", "redis-master.crypto-infra.svc.cluster.local")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "123456")

@@ -5,8 +5,8 @@ import websocket
 import threading
 import time
 
-# Kafka configuration - default to Kubernetes service name, fallback to local NodePort
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "my-cluster-kafka-bootstrap.crypto-infra.svc.cluster.local:9092")
+# Kafka configuration - default to Kubernetes service name
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "my-cluster-kafka-bootstrap.crypto-infra:9092")
 TOPIC_ORDERBOOK = os.getenv("KAFKA_TOPIC_ORDERBOOK", "crypto_orderbook")
 TOPIC_TRADES = os.getenv("KAFKA_TOPIC_TRADES", "crypto_trades")
 
