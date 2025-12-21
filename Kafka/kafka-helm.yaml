@@ -53,6 +53,12 @@ spec:
       default.replication.factor: 3
       min.insync.replicas: 2
       log.retention.minutes: 2
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics-config
+          key: kafka-metrics-config.yml
   entityOperator:
     topicOperator: {}
     userOperator: {}

@@ -37,7 +37,10 @@ export default function TradingDashboard() {
     bollinger: { enabled: false, color: "#ec4899", label: "Bollinger Bands", period: 20 },
   });
 
+  // Priority: browser detection > env variables > localhost
+  // Note: Service name only works in cluster, browser needs ingress URL
   const API_BASE =
+    (typeof window !== "undefined" ? "http://crypto.local/api" : null) ||
     process.env.NEXT_PUBLIC_API_BASE ||
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:8000";

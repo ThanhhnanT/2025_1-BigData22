@@ -66,7 +66,12 @@ export default function CandlestickChart() {
   const lastLoadMoreTimeRef = useRef<number>(0);
   const currentSymbolRef = useRef<string>(symbol);
   const isChangingSymbolRef = useRef<boolean>(false);
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+  // Priority: browser detection > env variables > localhost
+  const API_BASE = 
+    (typeof window !== "undefined" ? "http://crypto.local/api" : null) ||
+    process.env.NEXT_PUBLIC_API_BASE ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8000";
   const WS_BASE = API_BASE.replace(/^http/, "ws");
 
   useEffect(() => {

@@ -2,6 +2,40 @@
 
 Tài liệu này cung cấp các câu truy vấn PromQL để tạo dashboard Grafana cho hệ thống monitoring hiện tại.
 
+## ⚠️ Lưu ý quan trọng về Queries
+
+**Vấn đề phổ biến:** Metric `container_cpu_usage_seconds_total` và `container_memory_working_set_bytes` có thể **KHÔNG có label `namespace` trực tiếp** trong một số cấu hình Prometheus.
+
+**Giải pháp:** Sử dụng các query dưới đây với join `kube_pod_info` hoặc filter theo pod name pattern.
+
+## Quick Start - Test Queries (Đơn giản nhất)
+
+### Test 1: CPU Usage - Tất cả Pods (Không filter namespace)
+```promql
+topk(10, sum(rate(container_cpu_usage_seconds_total{container!="POD", container!=""}[5m])) by (pod))
+```
+
+### Test 2: CPU Usage - Với namespace (Join với kube_pod_info)
+```promql
+topk(10, sum(rate(container_cpu_usage_seconds_total{container!="POD", container!=""}[5m])) by (pod) * on (pod) group_left(namespace) kube_pod_info{namespace=~"crypto-.*"})
+```
+
+### Test 3: Memory Usage - Tất cả Pods
+```promql
+topk(10, sum(container_memory_working_set_bytes{container!="POD", container!=""}) by (pod))
+```
+
+### Test 4: Kiểm tra metric có label namespace không
+```promql
+# Nếu query này trả về kết quả, metric có label namespace:
+container_cpu_usage_seconds_total{namespace=~"crypto-.*"}
+
+# Nếu không, sử dụng join:
+container_cpu_usage_seconds_total * on (pod) group_left(namespace) kube_pod_info{namespace=~"crypto-.*"}
+```
+
+---
+
 ## Mục lục
 
 1. [Dashboard Tổng quan Hệ thống](#dashboard-tổng-quan-hệ-thống)
@@ -41,13 +75,28 @@ topk(10, sum(rate(container_cpu_usage_seconds_total{namespace=~"crypto-.*", cont
 - **Unit**: percent (0-100)
 - **Title**: Top 10 CPU Usage by Pod
 
+**Hoặc nếu namespace label có sẵn:**
+```promql
+topk(10, sum(rate(container_cpu_usage_seconds_total{container!="POD", container!=""}[5m])) by (pod, namespace))
+```
+
+**Hoặc filter theo pod name pattern:**
+```promql
+topk(10, sum(rate(container_cpu_usage_seconds_total{pod=~".*", container!="POD", container!=""}[5m])) by (pod) * on (pod) group_left(namespace) kube_pod_info{namespace=~"crypto-.*"})
+```
+
 ### Panel 4: Memory Usage - Top 10 Pods
 ```promql
-topk(10, sum(container_memory_working_set_bytes{namespace=~"crypto-.*", container!="POD", container!=""}) by (pod, namespace))
+topk(10, sum(container_memory_working_set_bytes{container!="POD", container!=""}) by (pod) * on (pod) group_left(namespace) kube_pod_info{namespace=~"crypto-.*"})
 ```
 - **Visualization**: Time series
 - **Unit**: bytes (IEC)
 - **Title**: Top 10 Memory Usage by Pod
+
+**Hoặc nếu namespace label có sẵn:**
+```promql
+topk(10, sum(container_memory_working_set_bytes{container!="POD", container!=""}) by (pod, namespace))
+```
 
 ### Panel 5: Total CPU Usage by Component
 ```promql
@@ -56,6 +105,11 @@ sum(rate(container_cpu_usage_seconds_total{namespace=~"crypto-.*", container!="P
 - **Visualization**: Time series
 - **Unit**: cores
 - **Title**: Total CPU Usage by Namespace
+
+**Hoặc cách đơn giản hơn:**
+```promql
+sum(rate(container_cpu_usage_seconds_total{container!="POD"}[5m])) by (pod) * on (pod) group_left(namespace) kube_pod_info{namespace=~"crypto-.*"} | sum by (namespace)
+```
 
 ### Panel 6: Total Memory Usage by Component
 ```promql
@@ -83,34 +137,38 @@ kube_pod_status_phase{namespace=~"crypto-.*", phase="Failed"}
 
 ## Dashboard Backend FastAPI
 
-### Panel 1: HTTP Request Rate
-```promql
-sum(rate(http_requests_total{namespace="crypto-app", app="backend-fastapi"}[5m])) by (method, endpoint)
-```
-- **Visualization**: Time series
-- **Title**: HTTP Request Rate by Method and Endpoint
+> **⚠️ Lưu ý:** Backend FastAPI hiện tại chưa có Prometheus HTTP instrumentation. Các panel 1-4, 7-8 sử dụng Kubernetes/process metrics thay thế. Để có HTTP metrics, xem phần [Thêm HTTP Metrics](#thêm-http-metrics-cho-backend-fastapi) ở cuối file.
 
-### Panel 2: HTTP Request Duration (p95)
+### Panel 1: Backend Pod Status
 ```promql
-histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="crypto-app", app="backend-fastapi"}[5m])) by (le, endpoint))
-```
-- **Visualization**: Time series
-- **Unit**: seconds
-- **Title**: HTTP Request Duration (p95)
-
-### Panel 3: HTTP Status Codes
-```promql
-sum(rate(http_requests_total{namespace="crypto-app", app="backend-fastapi"}[5m])) by (status_code)
-```
-- **Visualization**: Time series
-- **Title**: HTTP Status Codes
-
-### Panel 4: Active Connections
-```promql
-http_server_connections_active{namespace="crypto-app", app="backend-fastapi"}
+kube_pod_status_phase{namespace="crypto-app", pod=~"backend.*"}
 ```
 - **Visualization**: Stat
-- **Title**: Active Connections
+- **Title**: Pod Status
+- **Value options**: Last value
+
+### Panel 2: Backend Pod Restart Count
+```promql
+sum(increase(kube_pod_container_status_restarts_total{namespace="crypto-app", pod=~"backend.*"}[1h])) by (pod)
+```
+- **Visualization**: Stat
+- **Title**: Pod Restarts (Last Hour)
+
+### Panel 3: Network Bytes Received
+```promql
+sum(rate(container_network_receive_bytes_total{namespace="crypto-app", pod=~"backend.*"}[5m])) by (pod)
+```
+- **Visualization**: Time series
+- **Unit**: bytes/sec
+- **Title**: Network Bytes Received
+
+### Panel 4: Network Bytes Transmitted
+```promql
+sum(rate(container_network_transmit_bytes_total{namespace="crypto-app", pod=~"backend.*"}[5m])) by (pod)
+```
+- **Visualization**: Time series
+- **Unit**: bytes/sec
+- **Title**: Network Bytes Transmitted
 
 ### Panel 5: Backend Pod CPU Usage
 ```promql
@@ -128,20 +186,36 @@ sum(container_memory_working_set_bytes{namespace="crypto-app", pod=~"backend.*"}
 - **Unit**: bytes (IEC)
 - **Title**: Backend Memory Usage
 
-### Panel 7: Error Rate
+### Panel 7: CPU Throttling
 ```promql
-sum(rate(http_requests_total{namespace="crypto-app", app="backend-fastapi", status_code=~"5.."}[5m]))
+sum(rate(container_cpu_cfs_throttled_seconds_total{namespace="crypto-app", pod=~"backend.*"}[5m])) by (pod)
 ```
 - **Visualization**: Time series
-- **Title**: Error Rate (5xx)
+- **Unit**: seconds/sec
+- **Title**: CPU Throttling
 
-### Panel 8: Request Latency (Average)
+### Panel 8: Memory Limit Usage Percentage
 ```promql
-sum(rate(http_request_duration_seconds_sum{namespace="crypto-app", app="backend-fastapi"}[5m])) / sum(rate(http_request_duration_seconds_count{namespace="crypto-app", app="backend-fastapi"}[5m]))
+(sum(container_memory_working_set_bytes{namespace="crypto-app", pod=~"backend.*"}) by (pod) / sum(container_spec_memory_limit_bytes{namespace="crypto-app", pod=~"backend.*"}) by (pod)) * 100
 ```
 - **Visualization**: Time series
-- **Unit**: seconds
-- **Title**: Average Request Latency
+- **Unit**: percent (0-100)
+- **Title**: Memory Usage % of Limit
+
+### Panel 9: Pod Ready Status
+```promql
+kube_pod_status_condition{namespace="crypto-app", pod=~"backend.*", condition="Ready"}
+```
+- **Visualization**: Stat
+- **Title**: Pod Ready Status
+- **Value options**: Last value
+
+### Panel 10: Container Restart Count
+```promql
+kube_pod_container_status_restarts_total{namespace="crypto-app", pod=~"backend.*"}
+```
+- **Visualization**: Time series
+- **Title**: Container Restart Count Over Time
 
 ---
 
@@ -164,60 +238,130 @@ sum(container_memory_working_set_bytes{namespace="crypto-infra", pod=~"my-cluste
 - **Title**: Kafka Broker Memory Usage
 
 ### Panel 3: Kafka Messages In Per Second
+> **⚠️ Lưu ý:** Metric names phụ thuộc vào cấu hình JMX Prometheus Exporter. Nếu query không hoạt động, xem phần [Troubleshooting Kafka Metrics](#troubleshooting-kafka-metrics) ở cuối file.
+
+**Query 1 (JMX Exporter format - phổ biến nhất):**
 ```promql
-sum(rate(kafka_server_brokertopicmetrics_messagesin_total{namespace="crypto-infra"}[5m])) by (topic)
+sum(rate(kafka_server_BrokerTopicMetrics_MessagesInPerSec_Count[5m])) by (topic)
 ```
+
+**Query 2 (Alternative format):**
+```promql
+sum(rate(kafka_server_BrokerTopicMetrics_MessagesInPerSec_OneMinuteRate[5m])) by (topic)
+```
+
+**Query 3 (Nếu có label pod):**
+```promql
+sum(rate(kafka_server_BrokerTopicMetrics_MessagesInPerSec_Count{pod=~"my-cluster.*"}[5m])) by (topic, pod)
+```
+
 - **Visualization**: Time series
 - **Title**: Messages In Rate by Topic
 
 ### Panel 4: Kafka Messages Out Per Second
+**Query 1 (JMX Exporter format):**
 ```promql
-sum(rate(kafka_server_brokertopicmetrics_messagesout_total{namespace="crypto-infra"}[5m])) by (topic)
+sum(rate(kafka_server_BrokerTopicMetrics_MessagesOutPerSec_Count[5m])) by (topic)
 ```
+
+**Query 2 (Alternative format):**
+```promql
+sum(rate(kafka_server_BrokerTopicMetrics_MessagesOutPerSec_OneMinuteRate[5m])) by (topic)
+```
+
 - **Visualization**: Time series
 - **Title**: Messages Out Rate by Topic
 
 ### Panel 5: Kafka Bytes In Per Second
+**Query 1 (JMX Exporter format):**
 ```promql
-sum(rate(kafka_server_brokertopicmetrics_bytesin_total{namespace="crypto-infra"}[5m])) by (topic)
+sum(rate(kafka_server_BrokerTopicMetrics_BytesInPerSec_Count[5m])) by (topic)
 ```
+
+**Query 2 (Alternative format):**
+```promql
+sum(rate(kafka_server_BrokerTopicMetrics_BytesInPerSec_OneMinuteRate[5m])) by (topic)
+```
+
 - **Visualization**: Time series
 - **Unit**: bytes/sec
 - **Title**: Bytes In Rate by Topic
 
 ### Panel 6: Kafka Bytes Out Per Second
+**Query 1 (JMX Exporter format):**
 ```promql
-sum(rate(kafka_server_brokertopicmetrics_bytesout_total{namespace="crypto-infra"}[5m])) by (topic)
+sum(rate(kafka_server_BrokerTopicMetrics_BytesOutPerSec_Count[5m])) by (topic)
 ```
+
+**Query 2 (Alternative format):**
+```promql
+sum(rate(kafka_server_BrokerTopicMetrics_BytesOutPerSec_OneMinuteRate[5m])) by (topic)
+```
+
 - **Visualization**: Time series
 - **Unit**: bytes/sec
 - **Title**: Bytes Out Rate by Topic
 
 ### Panel 7: Kafka Consumer Lag
+> **⚠️ Lưu ý:** Consumer lag metrics thường được expose bởi Kafka Exporter hoặc JMX exporter với format khác.
+
+**Query 1 (JMX Exporter - Consumer Lag):**
 ```promql
-sum(kafka_consumer_lag_sum{namespace="crypto-infra"}) by (consumer_group, topic)
+sum(kafka_consumer_consumer_lag_sum) by (consumer_group, topic)
 ```
+
+**Query 2 (Alternative - nếu có label pod):**
+```promql
+sum(kafka_consumer_consumer_lag_sum{pod=~"my-cluster.*"}) by (consumer_group, topic, pod)
+```
+
+**Query 3 (Nếu sử dụng Kafka Exporter riêng):**
+```promql
+sum(kafka_consumer_lag_sum) by (consumer_group, topic)
+```
+
 - **Visualization**: Time series
 - **Title**: Consumer Lag by Group and Topic
 
 ### Panel 8: Kafka Partition Count
+**Query 1 (JMX Exporter format):**
 ```promql
-count(kafka_controller_offlinepartitionscount{namespace="crypto-infra"}) by (topic)
+kafka_controller_OfflinePartitionsCount_Value
 ```
+
+**Query 2 (Alternative - Count partitions từ topic metrics):**
+```promql
+count(kafka_server_BrokerTopicMetrics_MessagesInPerSec_Count) by (topic)
+```
+
 - **Visualization**: Stat
 - **Title**: Partition Count by Topic
 
 ### Panel 9: Kafka Active Controller Count
+**Query 1 (JMX Exporter format):**
 ```promql
-kafka_controller_activecontrollercount{namespace="crypto-infra"}
+kafka_controller_KafkaController_ActiveControllerCount_Value
 ```
+
+**Query 2 (Alternative format):**
+```promql
+kafka_controller_ActiveControllerCount_Value
+```
+
 - **Visualization**: Stat
 - **Title**: Active Controller Count
 
 ### Panel 10: Kafka Under Replicated Partitions
+**Query 1 (JMX Exporter format):**
 ```promql
-sum(kafka_controller_underreplicatedpartitions{namespace="crypto-infra"})
+kafka_controller_OfflinePartitionsCount_Value
 ```
+
+**Query 2 (Alternative - Under replicated partitions):**
+```promql
+kafka_controller_UnderReplicatedPartitions_Value
+```
+
 - **Visualization**: Stat
 - **Title**: Under Replicated Partitions
 
@@ -733,14 +877,84 @@ Thêm các variables sau để filter dữ liệu:
    {__name__=~".*"}
    ```
 
-3. **Kiểm tra labels:**
+3. **Kiểm tra labels có sẵn trong metric:**
+   ```promql
+   # Kiểm tra xem metric có label namespace không:
+   container_cpu_usage_seconds_total
+   
+   # Nếu không có namespace, cần join với kube_pod_info:
+   container_cpu_usage_seconds_total * on (pod) group_left(namespace) kube_pod_info{namespace=~"crypto-.*"}
+   ```
+
+4. **Kiểm tra labels:**
    ```bash
    kubectl get pods -n crypto-infra --show-labels
    ```
 
-4. **Kiểm tra ServiceMonitor:**
+5. **Kiểm tra ServiceMonitor:**
    ```bash
    kubectl get servicemonitors -A
+   ```
+
+### Sửa Query CPU Usage không chạy được
+
+**Vấn đề:** `container_cpu_usage_seconds_total` có thể không có label `namespace` trực tiếp.
+
+**Giải pháp 1: Join với kube_pod_info (Khuyến nghị)**
+```promql
+topk(10, sum(rate(container_cpu_usage_seconds_total{container!="POD", container!=""}[5m])) by (pod) * on (pod) group_left(namespace) kube_pod_info{namespace=~"crypto-.*"})
+```
+
+**Giải pháp 2: Filter theo pod name pattern**
+```promql
+topk(10, sum(rate(container_cpu_usage_seconds_total{pod=~"airflow.*|kafka.*|spark.*|backend.*|redis.*|mongo.*", container!="POD", container!=""}[5m])) by (pod))
+```
+
+**Giải pháp 3: Sử dụng label namespace nếu có sẵn**
+```promql
+topk(10, sum(rate(container_cpu_usage_seconds_total{namespace=~"crypto-.*", container!="POD", container!=""}[5m])) by (pod, namespace))
+```
+
+**Giải pháp 4: Query đơn giản nhất (không filter namespace)**
+```promql
+topk(10, sum(rate(container_cpu_usage_seconds_total{container!="POD", container!=""}[5m])) by (pod))
+```
+
+### Debug Query Step by Step
+
+1. **Bước 1: Kiểm tra metric có tồn tại:**
+   ```promql
+   container_cpu_usage_seconds_total
+   ```
+
+2. **Bước 2: Xem các labels có sẵn:**
+   ```promql
+   {__name__="container_cpu_usage_seconds_total"}
+   ```
+
+3. **Bước 3: Test với filter đơn giản:**
+   ```promql
+   container_cpu_usage_seconds_total{container!="POD"}
+   ```
+
+4. **Bước 4: Thêm rate:**
+   ```promql
+   rate(container_cpu_usage_seconds_total{container!="POD"}[5m])
+   ```
+
+5. **Bước 5: Thêm sum và group by:**
+   ```promql
+   sum(rate(container_cpu_usage_seconds_total{container!="POD"}[5m])) by (pod)
+   ```
+
+6. **Bước 6: Thêm topk:**
+   ```promql
+   topk(10, sum(rate(container_cpu_usage_seconds_total{container!="POD"}[5m])) by (pod))
+   ```
+
+7. **Bước 7: Thêm filter namespace (nếu cần):**
+   ```promql
+   topk(10, sum(rate(container_cpu_usage_seconds_total{container!="POD"}[5m])) by (pod) * on (pod) group_left(namespace) kube_pod_info{namespace=~"crypto-.*"})
    ```
 
 ### Metrics không hiển thị?
@@ -748,6 +962,198 @@ Thêm các variables sau để filter dữ liệu:
 - Đảm bảo ServiceMonitor đã được apply
 - Kiểm tra Prometheus có scrape được targets không
 - Xem logs của Prometheus để tìm lỗi
+- Kiểm tra xem metric có label `namespace` hay không bằng cách query trực tiếp trong Prometheus UI
+
+### Troubleshooting Kafka Metrics
+
+**Vấn đề:** Các query từ Panel 3 trở đi không trả về dữ liệu (no data).
+
+**Nguyên nhân phổ biến:**
+1. Kafka metrics chưa được bật trong cấu hình Kafka cluster
+2. Metric names không đúng với format của JMX Prometheus Exporter
+3. ServiceMonitor chưa được cấu hình đúng
+4. Metrics endpoint không được expose
+
+**Bước 1: Kiểm tra Kafka metrics có được bật không**
+
+Kiểm tra cấu hình Kafka cluster:
+```bash
+kubectl get kafka my-cluster -n crypto-infra -o yaml | grep -A 10 metricsConfig
+```
+
+Nếu không có `metricsConfig`, cần thêm vào file `Kafka/kafka-helm.yaml`:
+```yaml
+spec:
+  kafka:
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics-config
+          key: kafka-metrics-config.yml
+```
+
+**Bước 2: Kiểm tra ServiceMonitor**
+
+```bash
+kubectl get servicemonitor kafka-cluster -n crypto-infra -o yaml
+```
+
+Đảm bảo ServiceMonitor có:
+- Label `release: crypto-monitoring` (hoặc label phù hợp với Prometheus selector)
+- Endpoint trỏ đúng port `tcp-prometheus`
+- Path `/metrics`
+
+**Bước 3: Kiểm tra Prometheus có scrape được Kafka không**
+
+```bash
+# Port-forward Prometheus
+kubectl port-forward svc/crypto-monitoring-kube-prometheus-prometheus 9090:9090 -n crypto-monitoring
+
+# Mở browser: http://localhost:9090/targets
+# Tìm target có tên chứa "kafka" hoặc "my-cluster"
+```
+
+**Bước 4: Tìm metric names thực tế**
+
+Trong Prometheus UI (http://localhost:9090), thử các query sau để tìm metric names:
+
+```promql
+# Tìm tất cả metrics có chứa "kafka"
+{__name__=~"kafka.*"}
+
+# Tìm metrics về messages
+{__name__=~".*[Mm]essage.*"}
+
+# Tìm metrics về bytes
+{__name__=~".*[Bb]yte.*"}
+
+# Tìm metrics về topic
+{__name__=~".*[Tt]opic.*"}
+
+# Tìm metrics về controller
+{__name__=~".*[Cc]ontroller.*"}
+```
+
+**Bước 5: Kiểm tra metrics endpoint trực tiếp**
+
+```bash
+# Lấy tên pod Kafka
+kubectl get pods -n crypto-infra -l strimzi.io/cluster=my-cluster
+
+# Port-forward đến metrics endpoint (thường là port 9404)
+kubectl port-forward <kafka-pod-name> 9404:9404 -n crypto-infra
+
+# Kiểm tra metrics
+curl http://localhost:9404/metrics | grep -i kafka | head -20
+```
+
+**Bước 6: Sử dụng query đơn giản để test**
+
+Thử query đơn giản nhất để xem có metric nào không:
+```promql
+# Tìm tất cả metrics từ Kafka pods
+{__name__=~"kafka.*", pod=~"my-cluster.*"}
+
+# Hoặc không filter pod
+{__name__=~"kafka.*"}
+```
+
+**Bước 7: Kiểm tra JMX Exporter ConfigMap**
+
+Nếu sử dụng JMX Prometheus Exporter, cần có ConfigMap với cấu hình:
+```bash
+kubectl get configmap kafka-metrics-config -n crypto-infra -o yaml
+```
+
+ConfigMap này định nghĩa các metrics nào được expose và format của chúng.
+
+**Giải pháp thay thế: Sử dụng Network metrics**
+
+Nếu Kafka metrics không hoạt động, có thể sử dụng network metrics như proxy:
+```promql
+# Network bytes received (proxy cho messages in)
+sum(rate(container_network_receive_bytes_total{pod=~"my-cluster.*"}[5m])) by (pod)
+
+# Network bytes transmitted (proxy cho messages out)
+sum(rate(container_network_transmit_bytes_total{pod=~"my-cluster.*"}[5m])) by (pod)
+```
+
+**Lưu ý quan trọng:**
+- Metric names từ JMX Prometheus Exporter thường có format: `kafka_<domain>_<bean>_<attribute>_<type>`
+- Format có thể khác nhau tùy vào version của JMX exporter và cấu hình
+- Luôn kiểm tra `/metrics` endpoint trực tiếp để xem metric names thực tế
+
+---
+
+## Thêm HTTP Metrics cho Backend FastAPI
+
+Nếu bạn muốn có HTTP metrics (request rate, latency, status codes) cho Backend FastAPI, làm theo các bước sau:
+
+### Bước 1: Cài đặt Prometheus Instrumentator
+
+Thêm vào `backend_fastapi/requirements.txt`:
+```txt
+prometheus-fastapi-instrumentator==7.0.0
+```
+
+### Bước 2: Cập nhật main.py
+
+Thêm vào `backend_fastapi/app/main.py`:
+```python
+from prometheus_fastapi_instrumentator import Instrumentator
+
+# Thêm sau khi tạo app (sau dòng app = FastAPI(...))
+instrumentator = Instrumentator()
+instrumentator.instrument(app).expose(app)
+```
+
+### Bước 3: Rebuild và Deploy
+
+```bash
+cd backend_fastapi
+docker build -t your-registry/backend-fastapi:latest .
+docker push your-registry/backend-fastapi:latest
+kubectl rollout restart deployment/backend-fastapi -n crypto-app
+```
+
+### Bước 4: Verify Metrics Endpoint
+
+```bash
+kubectl port-forward svc/backend-fastapi-service 8000:8000 -n crypto-app
+curl http://localhost:8000/metrics
+```
+
+### Bước 5: Sử dụng HTTP Metrics Queries
+
+Sau khi bật instrumentation, bạn có thể sử dụng các queries sau:
+
+#### HTTP Request Rate
+```promql
+sum(rate(http_requests_total{namespace="crypto-app", app="backend-fastapi"}[5m])) by (method, endpoint)
+```
+
+#### HTTP Request Duration (p95)
+```promql
+histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="crypto-app", app="backend-fastapi"}[5m])) by (le, endpoint))
+```
+
+#### HTTP Status Codes
+```promql
+sum(rate(http_requests_total{namespace="crypto-app", app="backend-fastapi"}[5m])) by (status_code)
+```
+
+#### Error Rate (5xx)
+```promql
+sum(rate(http_requests_total{namespace="crypto-app", app="backend-fastapi", status_code=~"5.."}[5m]))
+```
+
+#### Average Request Latency
+```promql
+sum(rate(http_request_duration_seconds_sum{namespace="crypto-app", app="backend-fastapi"}[5m])) / sum(rate(http_request_duration_seconds_count{namespace="crypto-app", app="backend-fastapi"}[5m]))
+```
+
+**Lưu ý:** Các metric names có thể khác tùy theo version của `prometheus-fastapi-instrumentator`. Kiểm tra `/metrics` endpoint để xem metric names thực tế.
 
 ---
 
@@ -757,4 +1163,5 @@ Thêm các variables sau để filter dữ liệu:
 - [Grafana Dashboard Documentation](https://grafana.com/docs/grafana/latest/dashboards/)
 - [Kubernetes Metrics](https://github.com/kubernetes/kube-state-metrics)
 - [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator)
+- [Prometheus FastAPI Instrumentator](https://github.com/trallnag/prometheus-fastapi-instrumentator)
 

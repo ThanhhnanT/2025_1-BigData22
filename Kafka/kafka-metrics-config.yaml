@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-metrics-config
+  namespace: crypto-infra
+  labels:
+    app: kafka
+data:
+  kafka-metrics-config.yml: |
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    rules:
+      # Broker metrics
+      - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+)><>Value
+        name: kafka_server_$1_$2
+        labels:
+          clientId: "$3"
+      - pattern: kafka.server<type=(.+), name=(.+), topic=(.+)><>Value
+        name: kafka_server_$1_$2
+        labels:
+          topic: "$3"
+      - pattern: kafka.server<type=(.+), name=(.+), topic=(.+), partition=(.+)><>Value
+        name: kafka_server_$1_$2
+        labels:
+          topic: "$3"
+          partition: "$4"
+      
+      # BrokerTopicMetrics
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=(.+)><>Count
+        name: kafka_server_brokertopicmetrics_$1_total
+        type: COUNTER
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=(.+)><>OneMinuteRate
+        name: kafka_server_brokertopicmetrics_$1_rate
+        type: GAUGE
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=(.+)><>FiveMinuteRate
+        name: kafka_server_brokertopicmetrics_$1_five_minute_rate
+        type: GAUGE
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=(.+)><>FifteenMinuteRate
+        name: kafka_server_brokertopicmetrics_$1_fifteen_minute_rate
+        type: GAUGE
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=(.+)><>MeanRate
+        name: kafka_server_brokertopicmetrics_$1_mean_rate
+        type: GAUGE
+      
+      # Controller metrics
+      - pattern: kafka.controller<type=(.+), name=(.+)><>Value
+        name: kafka_controller_$1_$2
+        type: GAUGE
+      - pattern: kafka.controller<type=(.+), name=(.+)><>Count
+        name: kafka_controller_$1_$2_total
+        type: COUNTER
+      
+      # Network metrics
+      - pattern: kafka.network<type=(.+), name=(.+)><>Value
+        name: kafka_network_$1_$2
+        type: GAUGE
+      - pattern: kafka.network<type=(.+), name=(.+)><>Count
+        name: kafka_network_$1_$2_total
+        type: COUNTER
+      
+      # JVM metrics
+      - pattern: java.lang<type=Memory><HeapMemoryUsage>used
+        name: jvm_memory_heap_used_bytes
+        type: GAUGE
+      - pattern: java.lang<type=Memory><HeapMemoryUsage>max
+        name: jvm_memory_heap_max_bytes
+        type: GAUGE
+      - pattern: java.lang<type=Memory><NonHeapMemoryUsage>used
+        name: jvm_memory_nonheap_used_bytes
+        type: GAUGE
+      - pattern: java.lang<type=Memory><NonHeapMemoryUsage>max
+        name: jvm_memory_nonheap_max_bytes
+        type: GAUGE
+      
+      # Thread metrics
+      - pattern: java.lang<type=Threading><ThreadCount>
+        name: jvm_threads_current
+        type: GAUGE
+      - pattern: java.lang<type=Threading><PeakThreadCount>
+        name: jvm_threads_peak
+        type: GAUGE
+      
+      # GC metrics
+      - pattern: java.lang<type=GarbageCollector, name=(.+)><>CollectionCount
+        name: jvm_gc_collections_total
+        labels:
+          gc: "$1"
+        type: COUNTER
+      - pattern: java.lang<type=GarbageCollector, name=(.+)><>CollectionTime
+        name: jvm_gc_collection_seconds_total
+        labels:
+          gc: "$1"
+        type: COUNTER
+

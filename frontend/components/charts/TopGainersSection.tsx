@@ -76,7 +76,9 @@ export default function TopGainersSection({ apiBase }: TopGainersSectionProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<"gainers" | "losers" | "volume">("gainers");
   
+  // Priority: apiBase prop > browser detection > env variables > localhost
   const API_BASE = apiBase || 
+    (typeof window !== "undefined" ? "http://crypto.local/api" : null) ||
     process.env.NEXT_PUBLIC_API_BASE ||
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:8000";

@@ -177,7 +177,9 @@ export default function ChartEmbedded({ symbol, mode, indicators }: ChartEmbedde
   const loadMorePastRef = useRef<(() => void | Promise<void>) | null>(null);
   const lastLoadMoreTimeRef = useRef<number>(0);
   // Share same API/WS base strategy as TradingDashboard
+  // Priority: browser detection > env variables > localhost
   const API_BASE =
+    (typeof window !== "undefined" ? "http://crypto.local/api" : null) ||
     process.env.NEXT_PUBLIC_API_BASE ||
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:8000";
