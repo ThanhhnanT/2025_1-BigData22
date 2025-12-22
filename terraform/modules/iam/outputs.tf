@@ -10,11 +10,11 @@ output "eks_node_group_role_arn" {
 
 output "alb_controller_role_arn" {
   description = "ARN of the ALB Controller IAM role (IRSA)"
-  value       = var.oidc_provider_arn != "" ? aws_iam_role.alb_controller[0].arn : ""
+  value       = try(aws_iam_role.alb_controller["create"].arn, "")
 }
 
 output "ebs_csi_driver_role_arn" {
   description = "ARN of the EBS CSI Driver IAM role (IRSA)"
-  value       = var.oidc_provider_arn != "" ? aws_iam_role.ebs_csi_driver[0].arn : ""
+  value       = try(aws_iam_role.ebs_csi_driver["create"].arn, "")
 }
 

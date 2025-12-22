@@ -1,26 +1,3 @@
-terraform {
-  required_version = ">= 1.5.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.23"
-    }
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.11"
-    }
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
-    }
-  }
-}
-
 provider "aws" {
   region = var.aws_region
 
@@ -55,6 +32,8 @@ module "iam" {
 
   cluster_name = var.cluster_name
   environment  = var.environment
+  # IRSA is disabled in this base IAM module; it's handled in the separate iam_irsa module
+  enable_irsa  = false
   tags         = var.tags
 }
 
@@ -124,6 +103,7 @@ module "iam_irsa" {
 
   cluster_name      = var.cluster_name
   environment       = var.environment
+  enable_irsa       = true
   oidc_provider_arn = module.eks.oidc_provider_arn
   oidc_provider_url = module.eks.oidc_provider_url
   tags              = var.tags
@@ -145,12 +125,8 @@ module "addons" {
   alb_controller_role_arn  = module.iam_irsa.alb_controller_role_arn
   oidc_provider_arn       = module.eks.oidc_provider_arn
   oidc_provider_url       = module.eks.oidc_provider_url
+  vpc_id                  = module.vpc.vpc_id
   environment             = var.environment
   tags                    = var.tags
-
-  depends_on = [
-    module.eks,
-    module.iam_irsa
-  ]
 }
 

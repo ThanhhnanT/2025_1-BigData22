@@ -45,7 +45,7 @@ provider "helm" {
 
 # Service Account for ALB Controller
 resource "kubernetes_service_account" "alb_controller" {
-  count = var.alb_controller_role_arn != "" ? 1 : 0
+  for_each = { create = true }
 
   metadata {
     name      = "aws-load-balancer-controller"
@@ -62,7 +62,7 @@ resource "kubernetes_service_account" "alb_controller" {
 
 # Helm Release for AWS Load Balancer Controller
 resource "helm_release" "aws_load_balancer_controller" {
-  count = var.alb_controller_role_arn != "" ? 1 : 0
+  for_each = { create = true }
 
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
@@ -92,11 +92,11 @@ resource "helm_release" "aws_load_balancer_controller" {
 
   set {
     name  = "vpcId"
-    value = data.aws_vpc.main.id
+    value = var.vpc_id
   }
 
   depends_on = [
-    kubernetes_service_account.alb_controller
+    kubernetes_service_account.alb_controller["create"]
   ]
 }
 
@@ -116,7 +116,7 @@ resource "helm_release" "metrics_server" {
 
 # IAM Role for Cluster Autoscaler
 resource "aws_iam_role" "cluster_autoscaler" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = { create = true }
 
   name = "${var.cluster_name}-cluster-autoscaler-role"
 
@@ -143,7 +143,7 @@ resource "aws_iam_role" "cluster_autoscaler" {
 }
 
 resource "aws_iam_policy" "cluster_autoscaler" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = { create = true }
 
   name        = "${var.cluster_name}-cluster-autoscaler-policy"
   description = "Policy for Cluster Autoscaler"
@@ -182,21 +182,21 @@ resource "aws_iam_policy" "cluster_autoscaler" {
 }
 
 resource "aws_iam_role_policy_attachment" "cluster_autoscaler" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = { create = true }
 
-  policy_arn = aws_iam_policy.cluster_autoscaler[0].arn
-  role       = aws_iam_role.cluster_autoscaler[0].name
+  policy_arn = aws_iam_policy.cluster_autoscaler["create"].arn
+  role       = aws_iam_role.cluster_autoscaler["create"].name
 }
 
 # Service Account for Cluster Autoscaler
 resource "kubernetes_service_account" "cluster_autoscaler" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = { create = true }
 
   metadata {
     name      = "cluster-autoscaler"
     namespace = "kube-system"
     annotations = {
-      "eks.amazonaws.com/role-arn" = aws_iam_role.cluster_autoscaler[0].arn
+      "eks.amazonaws.com/role-arn" = aws_iam_role.cluster_autoscaler["create"].arn
     }
     labels = {
       "app.kubernetes.io/name"       = "cluster-autoscaler"
@@ -207,7 +207,7 @@ resource "kubernetes_service_account" "cluster_autoscaler" {
 
 # Cluster Autoscaler
 resource "helm_release" "cluster_autoscaler" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = { create = true }
 
   name       = "cluster-autoscaler"
   repository = "https://kubernetes.github.io/autoscaler"
@@ -227,7 +227,7 @@ resource "helm_release" "cluster_autoscaler" {
 
   set {
     name  = "rbac.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.cluster_autoscaler[0].arn
+    value = aws_iam_role.cluster_autoscaler["create"].arn
   }
 
   set {
@@ -241,17 +241,10 @@ resource "helm_release" "cluster_autoscaler" {
   }
 
   depends_on = [
-    kubernetes_service_account.cluster_autoscaler
+    kubernetes_service_account.cluster_autoscaler["create"]
   ]
 }
 
 # Data sources
 data "aws_region" "current" {}
-
-data "aws_vpc" "main" {
-  filter {
-    name   = "tag:Name"
-    values = ["${var.cluster_name}-vpc"]
-  }
-}
 

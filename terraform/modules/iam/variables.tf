@@ -14,6 +14,12 @@ variable "tags" {
   default     = {}
 }
 
+variable "enable_irsa" {
+  description = "Whether to create IRSA-related IAM roles and policies"
+  type        = bool
+  default     = false
+}
+
 variable "oidc_provider_arn" {
   description = "ARN of the OIDC provider for IRSA"
   type        = string

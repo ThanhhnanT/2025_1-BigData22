@@ -147,12 +147,6 @@ resource "aws_eks_node_group" "data_processing" {
     environment = var.environment
   }
 
-  taints {
-    key    = "workload"
-    value  = "data-processing"
-    effect = "NO_SCHEDULE"
-  }
-
   remote_access {
     ec2_ssh_key = null
   }

@@ -80,7 +80,7 @@ resource "aws_iam_role_policy_attachment" "eks_ssm_policy" {
 
 # IRSA for AWS Load Balancer Controller
 resource "aws_iam_role" "alb_controller" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = var.enable_irsa ? { create = true } : {}
 
   name = "${var.cluster_name}-alb-controller-role"
 
@@ -107,7 +107,7 @@ resource "aws_iam_role" "alb_controller" {
 }
 
 resource "aws_iam_policy" "alb_controller" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = var.enable_irsa ? { create = true } : {}
 
   name        = "${var.cluster_name}-alb-controller-policy"
   description = "Policy for AWS Load Balancer Controller"
@@ -358,15 +358,15 @@ resource "aws_iam_policy" "alb_controller" {
 }
 
 resource "aws_iam_role_policy_attachment" "alb_controller" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = var.enable_irsa ? { create = true } : {}
 
-  policy_arn = aws_iam_policy.alb_controller[0].arn
-  role       = aws_iam_role.alb_controller[0].name
+  policy_arn = aws_iam_policy.alb_controller["create"].arn
+  role       = aws_iam_role.alb_controller["create"].name
 }
 
 # IRSA for EBS CSI Driver
 resource "aws_iam_role" "ebs_csi_driver" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = var.enable_irsa ? { create = true } : {}
 
   name = "${var.cluster_name}-ebs-csi-driver-role"
 
@@ -393,9 +393,9 @@ resource "aws_iam_role" "ebs_csi_driver" {
 }
 
 resource "aws_iam_role_policy_attachment" "ebs_csi_driver" {
-  count = var.oidc_provider_arn != "" ? 1 : 0
+  for_each = var.enable_irsa ? { create = true } : {}
 
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-  role       = aws_iam_role.ebs_csi_driver[0].name
+  role       = aws_iam_role.ebs_csi_driver["create"].name
 }
 
