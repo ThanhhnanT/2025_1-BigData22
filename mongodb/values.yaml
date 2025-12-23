@@ -1126,7 +1126,7 @@ externalAccess:
 passwordUpdateJob:
   ## @param passwordUpdateJob.enabled Enable password update job
   ##
-  enabled: true
+  enabled: false
   ## @param passwordUpdateJob.backoffLimit set backoff limit of the job
   ##
   backoffLimit: 10
@@ -1141,9 +1141,7 @@ passwordUpdateJob:
   extraCommands: ""
   ## @param passwordUpdateJob.previousPasswords.rootPassword Previous root password (set if the password secret was already changed)
   ## @param passwordUpdateJob.previousPasswords.existingSecret Name of a secret containing the previous passwords (set if the password secret was already changed)
-  previousPasswords:
-    rootPassword: "DK9MAad3cn"
-    existingSecret: ""
+
   ## Configure Container Security Context
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container
   ## @param passwordUpdateJob.containerSecurityContext.enabled Enabled containers' Security Context
